@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>PhishLang Extension: Phishing Warning</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+</head>
+<body>
+	<div class="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gray-50 font-sansInter" id="freephishing-warning-page">
+	<div class="inline-flex flex-row items-start gap-8 p-24">
+		<div class="inline-flex rounded-2xl bg-red-500 p-4 text-white">
+			<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-hand-stop">
+				<path stroke="none" d="M0 0h24v24H0z" fill="none" />
+				<path d="M8 13v-7.5a1.5 1.5 0 0 1 3 0v6.5" />
+				<path d="M11 5.5v-2a1.5 1.5 0 1 1 3 0v8.5" />
+				<path d="M14 5.5a1.5 1.5 0 0 1 3 0v6.5" />
+				<path d="M17 7.5a1.5 1.5 0 0 1 3 0v8.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7a69.74 69.74 0 0 1 -.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47" />
+			</svg>
+		</div>
+		<div class="flex flex-col gap-4">
+			<header class="flex flex-col items-start gap-2">
+				<h1 class="text-3xl font-medium text-red-500">Phishing Warning</h1>
+				<span class="flex flex-row gap-1 text-gray-500">
+					<span>Reported URL:</span>
+					<span class="truncate" id="reported-url"></span>
+				</span>
+			</header>
+			<div class="flex flex-col gap-2">
+				<p class="max-w-[80ch] text-lg">
+					This website has been scanned by PhishLang, and has been deemed to be phishing. <br>
+					For your safety, you should not go any further. Using websites like these can lead to identity theft, stolen credit card information, downloading malware, etc.
+				</p>
+			</div>
+			<section class="mt-4 flex flex-col gap-4" id="blocklist-reasons">
+				<details class="rounded-md bg-gray-100 p-4">
+					<summary class="flex justify-between cursor-pointer">
+						<h2 class="text-lg">Learn more: why do we find this website suspicious?</h2>
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-selector">
+							<path stroke="none" d="M0 0h24v24H0z" fill="none" />
+							<path d="M8 9l4 -4l4 4" />
+							<path d="M16 15l-4 4l-4 -4" />
+						</svg>
+					</summary>
+					<div class="mt-4 flex flex-col gap-6 text-sm">
+						<div class="inline-flex flex-row items-start gap-4">
+							<div class="rounded-md bg-red-200 p-2 text-red-500">
+								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-urgent">
+									<path stroke="none" d="M0 0h24v24H0z" fill="none" />
+									<path d="M8 16v-4a4 4 0 0 1 8 0v4" />
+									<path d="M3 12h1m8 -9v1m8 8h1m-15.4 -6.4l.7 .7m12.1 -.7l-.7 .7" />
+									<path d="M6 16m0 1a1 1 0 0 1 1 -1h10a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-10a1 1 0 0 1 -1 -1z" />
+								</svg>
+							</div>
+							<div class="flex flex-col gap-1">
+								<header class="flex flex-col">
+									<span class="font-bold">Threatening Language and Urgency</span>
+									<span class="font-medium text-gray-700">Found in: Main content area of the page</span>
+								</header>
+								<span class="max-w-[70ch] text-gray-500">The page contains a message that communicates an immediate threat to the user's account, which is a common phishing tactic to induce a sense of urgency and prompt hasty actions.</span>
+							 </div>
+						</div>
+						<div class="inline-flex flex-row items-start gap-4">
+							<div class="rounded-md bg-red-200 p-2 text-red-500">
+								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-unlink">
+									<path stroke="none" d="M0 0h24v24H0z" fill="none" />
+									<path d="M17 22v-2" />
+									<path d="M9 15l6 -6" />
+									<path d="M11 6l.463 -.536a5 5 0 0 1 7.071 7.072l-.534 .464" />
+									<path d="M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463" />
+									<path d="M20 17h2" />
+									<path d="M2 7h2" />
+									<path d="M7 2v2" />
+								</svg>
+							</div>
+							<div class="flex flex-col gap-1">
+								<header class="flex flex-col">
+									<span class="font-bold">Non-Functional Sidebar Links</span>
+									<span class="font-medium text-gray-700">Found in: Sidebar menu</span>
+								</header>
+								<span class="max-w-[70ch] text-gray-500">Links in the sidebar that should lead to more information or settings are not functioning, which is not expected behavior for a legitimate service provider's website.</span>
+							</div>
+						</div>
+						<div class="inline-flex flex-row items-start gap-4">
+							<div class="rounded-md bg-red-200 p-2 text-red-500">
+								<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-text-grammar">
+									<path stroke="none" d="M0 0h24v24H0z" fill="none" />
+									<path d="M14 9a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" />
+									<path d="M4 12v-5a3 3 0 1 1 6 0v5" />
+									<path d="M4 9h6" />
+									<path d="M20 6v6" />
+									<path d="M4 16h12" />
+									<path d="M4 20h6" />
+									<path d="M14 20l2 2l5 -5" />
+								</svg>
+							</div>
+							<div class="flex flex-col gap-1">
+								<header class="flex flex-col">
+									<span class="font-bold">Grammatical Errors</span>
+									<span class="font-medium text-gray-700">Found in: Main warning text</span>
+								</header>
+								<span class="max-w-[70ch] text-gray-500">The use of incorrect grammar such as 'We have suspend your page' is atypical for official communications from a professional organization and indicates a lack of authenticity.</span>
+							</div>
+						</div>
+					</div>
+				</details>
+			</section>
+			<footer class="flex flex-row justify-end gap-4">
+				<button class="rounded-md bg-blue-500 px-4 py-2 font-medium text-white" id="mark-safe">Mark website as safe</button>
+				<button class="rounded-md bg-red-500 px-4 py-2 font-medium text-white" id="close-tab">Close tab</button>
+			</footer>
+		</div>
+	</div>
+	</div>
+</body>

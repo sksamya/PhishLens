@@ -1,0 +1,37 @@
+{
+  "model_version": "3.0.0-behavioral-gate",
+  "logistic_weights": {
+    "cross_domain_form": 3.4113,
+    "brand_mismatch": 3.7236,
+    "raw_ip_or_odd_host": 2.2413,
+    "disguised_password_box": 2.4306,
+    "entry_vector_qr_email_redirect": 1.1094,
+    "clipboard_command_or_fake_oauth": 2.917,
+    "unfamiliar_site_multiplier": 2.3445
+  },
+  "intercept": -4.3942,
+  "point_scoring": {
+    "cross_domain_form": 35,
+    "brand_mismatch": 40,
+    "raw_ip_or_odd_host": 25,
+    "disguised_password_box": 30,
+    "entry_vector_qr_email_redirect": 15,
+    "clipboard_command_or_fake_oauth": 50,
+    "unfamiliar_site_multiplier": 20
+  },
+  "thresholds": {
+    "low_max": 34,
+    "medium_min": 35,
+    "medium_max": 69,
+    "high_min": 70
+  },
+  "explanations": {
+    "cross_domain_form": "The page's form sends entered data to an external, third-party domain instead of its own.",
+    "brand_mismatch": "The page claims to be a well-known brand (e.g., Microsoft/Google) but is hosted on an unrelated domain.",
+    "raw_ip_or_odd_host": "The website is hosted on a raw IP address or uses an atypical, suspicious domain host.",
+    "disguised_password_box": "The page contains input fields disguised or styled to secretly capture credentials.",
+    "entry_vector_qr_email_redirect": "You arrived via a direct email link, QR code scan, or multi-hop redirect chain.",
+    "clipboard_command_or_fake_oauth": "The site attempted to inject executable shell commands to your clipboard or displayed a deceptive OAuth prompt.",
+    "unfamiliar_site_multiplier": "You have never visited this website before, which raises the risk of the observed signs."
+  }
+}

@@ -1,0 +1,42 @@
+{
+	"manifest_version": 3,
+	"name": "PhishLang",
+	"version": "2.4",
+	"description": "PhishLang Client-side Anti-phishing Extension",
+	"permissions": [
+		"webRequest",
+		"tabs",
+		"activeTab",
+		"scripting",
+		"storage",
+		"unlimitedStorage"
+	],
+	"host_permissions": [
+		"https://*/*",
+		"http://*/*"
+	],
+	"background": {
+		"service_worker": "src/service-worker.js",
+		"type": "module"
+	},
+	"action": {
+		"default_popup": "public/popup.html"
+	},
+	"content_security_policy": {
+		"extension_pages": "script-src 'self'; object-src 'self'"
+	},
+	"web_accessible_resources": [
+		{
+			"matches": ["<all_urls>"],
+			"resources": [
+				"icons/warning.png",
+				"public/phishing.html",
+				"public/dist.css"
+			]
+		}
+	],
+	"icons": {
+		"64": "icons/icon64.png",
+		"128": "icons/icon128.png"
+	}
+}

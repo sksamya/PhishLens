@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>PhishLang Extension Popup</title>
+	<link rel="stylesheet" type="text/css" href="./dist.css" />
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+</head>
+<body class="w-[400px] text-base font-sans bg-zinc-800 text-zinc-50">
+	<div class="flex flex-col gap-3">
+		<header id="popup-header" class="flex flex-row gap-2 items-center justify-between p-4 bg-blue-700 text-white">
+			<div class="flex flex-row gap-2 items-center">
+				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-fish-hook">
+					<path stroke="none" d="M0 0h24v24H0z" fill="none" />
+					<path d="M16 9v6a5 5 0 0 1 -10 0v-4l3 3" />
+					<path d="M16 7m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+					<path d="M16 5v-2" />
+				</svg>
+				<span class="flex flex-col">
+					<h1 class="font-semibold">PhishLang</h1>
+					<span class="text-sm">Surf the web, safely with PhishLang</span>
+				</span>
+			</div>
+			<div class="cursor-help" title="An client-side extension to protect users from active phishing threats">
+				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="icon icon-tabler icons-tabler-filled icon-tabler-info-circle">
+					<path stroke="none" d="M0 0h24v24H0z" fill="none" />
+					<path d="M12 2c5.523 0 10 4.477 10 10a10 10 0 0 1 -19.995 .324l-.005 -.324l.004 -.28c.148 -5.393 4.566 -9.72 9.996 -9.72zm0 9h-1l-.117 .007a1 1 0 0 0 0 1.986l.117 .007v3l.007 .117a1 1 0 0 0 .876 .876l.117 .007h1l.117 -.007a1 1 0 0 0 .876 -.876l.007 -.117l-.007 -.117a1 1 0 0 0 -.764 -.857l-.112 -.02l-.117 -.006v-3l-.007 -.117a1 1 0 0 0 -.876 -.876l-.117 -.007zm.01 -3l-.127 .007a1 1 0 0 0 0 1.986l.117 .007l.127 -.007a1 1 0 0 0 0 -1.986l-.117 -.007z" />
+				</svg>
+			</div>
+		</header>
+		<main class="text-sm mt-[-0.75rem] flex flex-col">
+			<div id="settings" class="flex flex-col p-4 border-b border-zinc-700 gap-4">
+				<span class="font-semibold text-lg text-center">User Settings</span>
+				<div class="flex items-start gap-2">
+					<input type="checkbox" id="checkbox-blocklist" class="size-5" />
+					<label class="flex flex-col leading-normal" for="checkbox-blocklist">
+						<span class="font-bold" id="blocklist-title">Show blocklist</span>
+						<span class="text-zinc-300" id="blocklist-desc">Show in-depth explanations on why the site is blocked.</span>
+					</label>
+				</div>
+				<div class="flex-col items-start gap-2 ml-6 hidden" id="openai-key">
+					<label class="flex flex-col leading-normal">
+						<span class="font-bold" id="blocklist-title">OpenAI API Key</span>
+						<span class="text-zinc-300" id="blocklist-desc">
+							Visit <a href="https://platform.openai.com/api-keys" class="text-blue-500">platform.openai.com/api-keys</a> to get your key.
+							Integrates with OpenAI's API for in-depth explanations on site security reports.
+						</span>
+					</label>
+						<input type="text" id="openai-key" class="p-1 text-black w-full bg-zinc-500 placeholder:text-zinc-700" placeholder="Enter your OpenAI key here" />
+				</div>
+			</div>
+			<div id="website-status" class="flex flex-col p-4 border-b border-zinc-700 text-center">
+				<span class="font-semibold text-lg">Website Status</span>
+				<span id="status">Checking...</span>
+				<div id="warning"></div>
+			</div>
+			<div id="website-report"></div>
+			<dl class="p-4 flex flex-col gap-2 items-start">
+				<div class="flex flex-col">
+					<dt>Base URL</dt>
+					<dd id="base-url" class="font-mono text-xs text-zinc-300"></dd>
+				</div>
+				<div class="flex flex-col">
+					<dt>Full URL</dt>
+					<dd id="full-url" class="font-mono text-xs break-all text-zinc-300"></dd>
+				</div>
+			</dl>
+			<section>
+				<details class="bg-zinc-700">
+					<summary class="p-4 flex flex-row justify-between cursor-pointer">
+						<h1 class="flex font-medium">Advanced information</h1>
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-selector">
+							<path stroke="none" d="M0 0h24v24H0z" fill="none" />
+							<path d="M8 9l4 -4l4 4" />
+							<path d="M16 15l-4 4l-4 -4" />
+						</svg>
+					</summary>
+					<div class="p-4 pt-0 flex flex-col gap-2">
+						<dl class="grid grid-cols-2 gap-2">
+							<div class="flex flex-col">
+								<dt>URI protocol</dt>
+								<dd id="uri-protocol" class="font-mono text-xs text-zinc-200"></dd>
+							</div>
+							<div class="flex flex-col">
+								<dt>URI pathname</dt>
+								<dd id="uri-pathname" class="font-mono text-xs break-all text-zinc-300"></dd>
+							</div>
+							<div class="flex flex-col col-span-2">
+								<dt>URI query string</dt>
+								<dd id="uri-search" class="font-mono text-xs break-all text-zinc-300"></dd>
+							</div>
+						</dl>
+						<section class="mt-2">
+							<h3 class="font-medium pt-2">Search params</h3>
+							<div id="uri-searchparams"></div>
+						</section>
+					</div>
+				</details>
+			</section>
+		</main>
+	</div>
+	<script src="../src/popup.js" type="module"></script>
+</body>
+</html>
