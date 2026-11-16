@@ -2,7 +2,7 @@
 <html>
 <head>
 	<meta charset="UTF-8">
-	<title>PhishLang Extension Popup</title>
+	<title>PhishLens Extension Popup</title>
 	<link rel="stylesheet" type="text/css" href="./dist.css" />
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,8 +19,8 @@
 					<path d="M16 5v-2" />
 				</svg>
 				<span class="flex flex-col">
-					<h1 class="font-semibold">PhishLang</h1>
-					<span class="text-sm">Surf the web, safely with PhishLang</span>
+					<h1 class="font-semibold">PhishLens</h1>
+					<span class="text-sm">Surf the web, safely with PhishLens</span>
 				</span>
 			</div>
 			<div class="cursor-help" title="An client-side extension to protect users from active phishing threats">
@@ -40,15 +40,16 @@
 						<span class="text-zinc-300" id="blocklist-desc">Show in-depth explanations on why the site is blocked.</span>
 					</label>
 				</div>
-				<div class="flex-col items-start gap-2 ml-6 hidden" id="openai-key">
+				<div class="flex-col items-start gap-2 ml-6 hidden" id="openai-key-section">
 					<label class="flex flex-col leading-normal">
-						<span class="font-bold" id="blocklist-title">OpenAI API Key</span>
-						<span class="text-zinc-300" id="blocklist-desc">
-							Visit <a href="https://platform.openai.com/api-keys" class="text-blue-500">platform.openai.com/api-keys</a> to get your key.
+						<span class="font-bold" id="openai-key-title">OpenAI API Key</span>
+						<span class="text-zinc-300" id="openai-key-desc">
+							Visit <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline">platform.openai.com/api-keys</a> to get your key.
 							Integrates with OpenAI's API for in-depth explanations on site security reports.
 						</span>
 					</label>
-						<input type="text" id="openai-key" class="p-1 text-black w-full bg-zinc-500 placeholder:text-zinc-700" placeholder="Enter your OpenAI key here" />
+					<input type="password" id="openai-key-input" class="p-1.5 text-white w-full rounded bg-zinc-700 border border-zinc-600 placeholder:text-zinc-400 font-mono text-xs" placeholder="sk-..." />
+					<span id="openai-key-saved" class="text-xs text-green-400 hidden">✓ API key saved</span>
 				</div>
 			</div>
 			<div id="website-status" class="flex flex-col p-4 border-b border-zinc-700 text-center">
@@ -57,6 +58,31 @@
 				<div id="warning"></div>
 			</div>
 			<div id="website-report"></div>
+			<div id="openai-explanation-container" class="hidden p-4 border-b border-zinc-700 bg-zinc-850">
+				<div class="flex items-center justify-between mb-2">
+					<span class="font-semibold text-sm flex items-center gap-1.5 text-blue-400">
+						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M12 2a10 10 0 1 0 10 10H12V2z"></path>
+							<path d="M12 12L2.1 12a10.1 10.1 0 0 0 1.9 4"></path>
+						</svg>
+						OpenAI Security Insights
+					</span>
+					<button id="openai-refresh-btn" class="text-xs text-zinc-400 hover:text-white underline cursor-pointer">Generate</button>
+				</div>
+				<div id="openai-loading" class="hidden text-xs text-zinc-400 italic py-2 flex items-center gap-2">
+					<svg class="animate-spin h-3.5 w-3.5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+					</svg>
+					Analyzing site with OpenAI...
+				</div>
+				<div id="openai-error" class="hidden text-xs text-red-400 py-1"></div>
+				<div id="openai-result" class="hidden flex flex-col gap-2 text-xs">
+					<div id="openai-summary" class="font-medium text-zinc-200"></div>
+					<div id="openai-explanation" class="text-zinc-300 leading-relaxed whitespace-pre-line"></div>
+					<div id="openai-recommendations" class="mt-1 text-zinc-400"></div>
+				</div>
+			</div>
 			<dl class="p-4 flex flex-col gap-2 items-start">
 				<div class="flex flex-col">
 					<dt>Base URL</dt>
