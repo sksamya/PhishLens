@@ -40,6 +40,16 @@
 				</div>
 				<div id="openai-phishing-text" class="whitespace-pre-line leading-relaxed"></div>
 			</div>
+			<div id="phishlens-specific-threats" class="mt-2 rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-900">
+				<div class="flex items-center gap-2 font-semibold text-red-800 mb-1">
+					<span>🛡️</span>
+					<span>Detected Threat Indicators:</span>
+				</div>
+				<ul id="phishlens-threat-list" class="list-disc list-inside space-y-1 text-red-700">
+					<li>Deceptive external domain mismatch detected during page inspection</li>
+					<li>Suspicious form attributes and dynamic script injection patterns</li>
+				</ul>
+			</div>
 			<section class="mt-4 flex flex-col gap-4" id="blocklist-reasons">
 				<details class="rounded-md bg-gray-100 p-4">
 					<summary class="flex justify-between cursor-pointer">
@@ -113,9 +123,10 @@
 					</div>
 				</details>
 			</section>
-			<footer class="flex flex-row justify-end gap-4">
-				<button class="rounded-md bg-blue-500 px-4 py-2 font-medium text-white" id="mark-safe">Mark website as safe</button>
-				<button class="rounded-md bg-red-500 px-4 py-2 font-medium text-white" id="close-tab">Close tab</button>
+			<footer class="flex flex-row justify-end gap-3 flex-wrap mt-2">
+				<button class="rounded-md bg-gray-600 hover:bg-gray-700 px-4 py-2 font-medium text-white transition-colors cursor-pointer" id="go-back-btn">Go Back</button>
+				<button class="rounded-md bg-red-600 hover:bg-red-700 px-4 py-2 font-medium text-white transition-colors cursor-pointer" id="close-tab">Close Tab (Recommended)</button>
+				<button class="rounded-md border border-gray-400 bg-transparent hover:bg-gray-200 px-4 py-2 font-medium text-gray-700 transition-colors cursor-pointer" id="mark-safe">Proceed Anyway (Unsafe)</button>
 			</footer>
 		</div>
 	</div>

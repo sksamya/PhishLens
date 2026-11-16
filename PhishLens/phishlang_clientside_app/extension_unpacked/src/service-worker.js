@@ -34,9 +34,12 @@ import { logGroupEventAsync, logResponse, onPhishStatusAsync } from './utils.js'
 import { whitelist } from './whitelist.js';
 import {
 	computeRiskScore,
+	computeUnifiedRiskScore,
 	toSubmissionGuardResponse,
 	derivePageStatusFromSignals,
 	isKnownLegitimateDestination,
+	detectInterstitialOrCaptcha,
+	createTypedEvidence,
 } from './risk-engine.js';
 
 /** @type {Record<string,string>} */
@@ -69,6 +72,7 @@ class PhishResult {
 	static asSafe = new PhishResult(false, false, 'safe');
 	static asSuspicious = new PhishResult(false, false, 'suspicious');
 	static asPhishing = new PhishResult(false, false, 'phishing');
+	static asUnverified = new PhishResult(false, false, 'unverified');
 }
 
 /* ==========================================================================
@@ -456,6 +460,9 @@ chrome.webRequest.onCompleted.addListener(
 				console.log('[PhishLens] Heuristic result:', heuristicResult);
 				if (!Object.hasOwn(urlCheckResults, domain)) {
 					urlCheckResults[domain] = heuristicResult.verdict;
+					if (heuristicResult.verdict === 'phishing' && tabId) {
+						chrome.tabs.sendMessage(tabId, { action: 'lockAllFormsDueToPhishing' }).catch(() => {});
+					}
 				}
 			}
 		});
@@ -537,12 +544,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 							const currentStatus = urlCheckResults[domain] ?? null;
 							const aiVerdict = currentStatus === 'phishing' ? 'phishing'
 								: currentStatus === 'suspicious' ? 'suspicious'
+								: currentStatus === 'unverified' ? 'unverified'
 								: null;
 
 							const newStatus = derivePageStatusFromSignals(allSignals, currentStatus, aiVerdict);
 							if (newStatus) {
 								urlCheckResults[domain] = newStatus;
 								console.log(`[PhishLens Risk Engine] ${domain} → ${newStatus} (from ${allSignals.length} signals)`);
+
+								// If newly flagged as phishing, notify the tab immediately to lock all forms
+								if (newStatus === 'phishing' && tabId) {
+									chrome.tabs.sendMessage(tabId, { action: 'lockAllFormsDueToPhishing' }).catch(() => {});
+								}
 							}
 						}
 					} catch (e) {
@@ -595,10 +608,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 					const pageStatus = urlCheckResults[pageDomain] ?? null;
 					const aiVerdict  = pageStatus === 'phishing'   ? 'phishing'
 						: pageStatus === 'suspicious' ? 'suspicious'
+						: pageStatus === 'unverified' ? 'unverified'
 						: null;
 
-					// Run the correlated risk engine
-					const riskResult = computeRiskScore(tabSignals, {
+					// Run the correlated unified risk engine (Phase 5)
+					const riskResult = computeUnifiedRiskScore(tabSignals, {
 						aiVerdict,
 						isCrossOriginSubmit: !!isCrossOrigin,
 						isKnownIdP:          !!isKnownIdP,
@@ -608,24 +622,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 					guardResponse = toSubmissionGuardResponse(riskResult, destinationOrigin);
 
-					console.log('[PhishLens Risk Engine] evaluateSubmissionRisk', {
+					console.log('[PhishLens Unified Risk Engine] evaluateSubmissionRisk', {
 						pageDomain,
 						score: riskResult.score,
+						level: riskResult.level,
 						verdict: guardResponse.verdict,
 						contributors: riskResult.contributors,
 					});
 
-					// Only register DNR and update stored status when we are certain (BLOCK).
-					// WARN leaves the page status as-is — do not permanently mark it phishing.
+					// State handling based on unified level
 					if (guardResponse.verdict === 'BLOCK') {
-						// Only escalate if AI also agrees (or page is already marked phishing)
-						// to prevent false DNR registrations from behavioral signals alone.
 						if (aiVerdict === 'phishing' || pageStatus === 'phishing') {
 							blockDomainWithDNR(pageDomain);
 							urlCheckResults[pageDomain] = 'phishing';
 						} else {
-							// Behavioral-only block: escalate status but don't DNR yet
 							urlCheckResults[pageDomain] = 'suspicious';
+						}
+					} else if (guardResponse.verdict === 'UNVERIFIED') {
+						if (urlCheckResults[pageDomain] !== 'phishing') {
+							urlCheckResults[pageDomain] = 'unverified';
 						}
 					}
 				} catch (e) {
@@ -838,6 +853,18 @@ async function onPhishResultEvent(context) {
 			// Register dynamic DNR rule to block future navigations natively
 			blockDomainWithDNR(context.domain);
 
+			// Immediately broadcast form lockdown to all tabs matching this phishing domain
+			if (context.tabId) {
+				chrome.tabs.sendMessage(context.tabId, { action: 'lockAllFormsDueToPhishing', domain: context.domain }).catch(() => {});
+			}
+			chrome.tabs.query({}, (tabs) => {
+				for (const tab of tabs) {
+					if (tab.url && tab.url.includes(context.domain) && tab.id && tab.id !== context.tabId) {
+						chrome.tabs.sendMessage(tab.id, { action: 'lockAllFormsDueToPhishing', domain: context.domain }).catch(() => {});
+					}
+				}
+			});
+
 			await chrome.scripting.executeScript({
 				target: { tabId: context.tabId },
 				func: (phishHtmlText, url, tabId) => {
@@ -904,6 +931,17 @@ async function onPhishResultEvent(context) {
 							});
 						}
 
+						const goBackBtn = document.getElementById('go-back-btn');
+						if (goBackBtn) {
+							goBackBtn.addEventListener('click', () => {
+								if (window.history.length > 1) {
+									window.history.back();
+								} else {
+									chrome.runtime.sendMessage({ action: 'closeTab', tabId: tabId });
+								}
+							});
+						}
+
 						const markSafeBtn = document.getElementById('mark-safe');
 						if (markSafeBtn) {
 							markSafeBtn.addEventListener('click', () => {
@@ -932,6 +970,12 @@ async function onPhishResultEvent(context) {
 			urlCheckResults[context.domain] = 'suspicious';
 			chrome.storage.local.set({
 				[context.domain]: PhishResult.asSuspicious,
+			});
+		},
+		onUnverified: async () => {
+			urlCheckResults[context.domain] = 'unverified';
+			chrome.storage.local.set({
+				[context.domain]: PhishResult.asUnverified,
 			});
 		},
 	});

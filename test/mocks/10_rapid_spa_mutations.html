@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="x-phishlens-scenario" content="benign">
+  <meta charset="UTF-8">
+  <title>Mock 10: High-Frequency Benign SPA Mutations</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    #item-list { max-height: 300px; overflow-y: auto; border: 1px solid #e2e8f0; padding: 1rem; }
+    .item { padding: 4px 8px; margin: 2px 0; background: #f8fafc; border-radius: 4px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h2>Single Page Application High-Frequency Feed Simulation</h2>
+  <p>Generates rapid non-sensitive DOM mutations (500 items) to stress test debouncing and observer CPU efficiency.</p>
+  
+  <button id="start-bench-btn">Start Mutation Burst</button>
+  <span id="bench-status" style="margin-left: 1rem; font-weight: bold;"></span>
+  <div id="item-list"></div>
+
+  <script>
+    document.getElementById('start-bench-btn').addEventListener('click', () => {
+      const list = document.getElementById('item-list');
+      const status = document.getElementById('bench-status');
+      status.textContent = 'Generating 500 DOM updates...';
+      const t0 = performance.now();
+
+      for (let i = 1; i <= 500; i++) {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.textContent = `Notification #${i}: Status update at ${Date.now()}`;
+        list.appendChild(div);
+      }
+
+      const elapsed = (performance.now() - t0).toFixed(2);
+      status.textContent = `Finished 500 mutations in ${elapsed} ms without main thread lockup.`;
+    });
+  </script>
+</body>
+</html>

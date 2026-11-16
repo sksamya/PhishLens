@@ -33,6 +33,7 @@
 		MAX_SIGNALS_PER_PAGE: 100,         // Prevent unbounded memory growth
 		UI_IGNORE_SELECTORS: [             // Extension's own UI elements to ignore
 			'#freephishing-warning-page',
+			'#phishlens-global-phishing-banner',
 			'[data-phishlens-ui]',
 			'.phishlang-overlay',
 			'.phishlang-ui'
@@ -401,6 +402,9 @@
 	   PHASE 2: FORM LOCKING GUARD & PRE-SUBMISSION INTERCEPTION
 	   ========================================================================== */
 
+	let isPageFlaggedAsPhishing = false;
+	let phishingLockInterval = null;
+
 	const FormLockGuard = {
 		/**
 		 * Apply temporary protected state and evaluate submission risk
@@ -456,6 +460,10 @@
 						FormLockGuard.unlock(form);
 						FormLockGuard.showWarningBanner(form, response.reason, destinationOrigin);
 						FormLockGuard.proceedWithNativeSubmit(form);
+					} else if (response.verdict === 'UNVERIFIED') {
+						// Phase 5: Destination verification blocked by security check/CAPTCHA
+						FormLockGuard.unlock(form);
+						FormLockGuard.showUnverifiedDestinationBanner(form, response.reason, destinationOrigin);
 					} else {
 						// BLOCK — multiple correlated indicators of phishing confirmed
 						FormLockGuard.block(form, response.reason, destinationOrigin);
@@ -479,12 +487,18 @@
 			form.setAttribute('aria-busy', 'true');
 			form.setAttribute('data-phishlens-locked', 'true');
 
-			// Disable submit buttons in the form
-			const submitButtons = form.querySelectorAll('button[type="submit"], input[type="submit"], button:not([type])');
-			submitButtons.forEach((btn) => {
-				btn.setAttribute('data-phishlens-disabled', 'true');
-				btn.setAttribute('aria-disabled', 'true');
-				btn.disabled = true;
+			// Disable all interactive input fields, selects, textareas, and buttons in the form
+			const controls = form.querySelectorAll('input:not([type="hidden"]), select, textarea, button');
+			controls.forEach((control) => {
+				const htmlControl = /** @type {HTMLInputElement} */ (control);
+				if (!htmlControl.hasAttribute('data-phishlens-disabled')) {
+					htmlControl.setAttribute('data-phishlens-disabled', 'true');
+					htmlControl.setAttribute('aria-disabled', 'true');
+					htmlControl.disabled = true;
+					htmlControl.style.pointerEvents = 'none';
+					htmlControl.style.opacity = '0.6';
+					htmlControl.style.cursor = 'not-allowed';
+				}
 			});
 
 			// Render or update scoped banner
@@ -530,11 +544,15 @@
 			form.removeAttribute('aria-busy');
 			form.removeAttribute('data-phishlens-locked');
 
-			const submitButtons = form.querySelectorAll('[data-phishlens-disabled="true"]');
-			submitButtons.forEach((btn) => {
-				btn.removeAttribute('data-phishlens-disabled');
-				btn.removeAttribute('aria-disabled');
-				btn.disabled = false;
+			const lockedControls = form.querySelectorAll('[data-phishlens-disabled="true"]');
+			lockedControls.forEach((control) => {
+				const htmlControl = /** @type {HTMLInputElement} */ (control);
+				htmlControl.removeAttribute('data-phishlens-disabled');
+				htmlControl.removeAttribute('aria-disabled');
+				htmlControl.disabled = false;
+				htmlControl.style.pointerEvents = '';
+				htmlControl.style.opacity = '';
+				htmlControl.style.cursor = '';
 			});
 
 			const banner = form.querySelector('[data-phishlens-ui="lock-banner"]');
@@ -552,6 +570,27 @@
 		block(form, reason, destinationOrigin) {
 			form.setAttribute('aria-busy', 'false');
 			form.setAttribute('data-phishlens-blocked', 'true');
+
+			// Lock all inputs, selects, textareas, and submit buttons permanently on block
+			const controls = form.querySelectorAll('input:not([type="hidden"]), select, textarea, button');
+			controls.forEach((control) => {
+				const htmlControl = /** @type {HTMLInputElement} */ (control);
+				htmlControl.setAttribute('data-phishlens-disabled', 'true');
+				htmlControl.setAttribute('aria-disabled', 'true');
+				htmlControl.setAttribute('disabled', 'true');
+				htmlControl.setAttribute('readonly', 'true');
+				htmlControl.setAttribute('tabindex', '-1');
+				htmlControl.disabled = true;
+				htmlControl.readOnly = true;
+				htmlControl.style.setProperty('pointer-events', 'none', 'important');
+				htmlControl.style.setProperty('opacity', '0.45', 'important');
+				htmlControl.style.setProperty('cursor', 'not-allowed', 'important');
+				htmlControl.style.setProperty('user-select', 'none', 'important');
+				if (document.activeElement === htmlControl) htmlControl.blur();
+			});
+
+			// Mark page-level phishing lock active
+			isPageFlaggedAsPhishing = true;
 
 			let banner = form.querySelector('[data-phishlens-ui="lock-banner"]');
 			if (!banner) {
@@ -579,18 +618,19 @@
 				z-index: 10000;
 			`;
 
+			const safeRedactedDestination = _redactUrl(destinationOrigin || '');
 			banner.innerHTML = `
 				<div style="display: flex; align-items: flex-start; gap: 8px;">
 					<span style="font-size: 20px; line-height: 1;">🚫</span>
 					<div>
 						<strong style="color: #fca5a5; font-size: 14px;">Submission Blocked by PhishLens</strong>
 						<p style="margin: 4px 0 0 0; color: #fecaca;">${reason}</p>
-						<p style="margin: 2px 0 0 0; font-size: 12px; color: #f87171;">Destination: <code>${destinationOrigin}</code></p>
+						<p style="margin: 2px 0 0 0; font-size: 12px; color: #f87171;">Suspicious Destination: <code>${safeRedactedDestination}</code></p>
 					</div>
 				</div>
 				<div style="display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; flex-wrap: wrap;">
 					<button type="button" id="phishlens-btn-cancel" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #7f1d1d; background: #7f1d1d; color: #fff; cursor: pointer; font-size: 12px; font-weight: 500;">
-						Cancel Submission
+						Go Back
 					</button>
 					<button type="button" id="phishlens-btn-close" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #991b1b; background: #dc2626; color: #fff; cursor: pointer; font-size: 12px; font-weight: 600;">
 						Close Tab (Recommended)
@@ -603,7 +643,11 @@
 
 			// Wire up accessible actions
 			banner.querySelector('#phishlens-btn-cancel').addEventListener('click', () => {
-				FormLockGuard.unlock(form);
+				if (window.history.length > 1) {
+					window.history.back();
+				} else {
+					unlockEntirePageAfterUserOverride();
+				}
 			});
 
 			banner.querySelector('#phishlens-btn-close').addEventListener('click', () => {
@@ -611,7 +655,7 @@
 			});
 
 			banner.querySelector('#phishlens-btn-override').addEventListener('click', () => {
-				FormLockGuard.unlock(form);
+				unlockEntirePageAfterUserOverride();
 				FormLockGuard.proceedWithNativeSubmit(form);
 			});
 		},
@@ -660,6 +704,73 @@
 			banner.querySelector('[data-phishlens-dismiss]').addEventListener('click', () => banner.remove());
 			form.prepend(banner);
 			setTimeout(() => { if (banner.isConnected) banner.remove(); }, 8000);
+		},
+
+		/**
+		 * Show a dedicated "Unverified Destination" alert (Phase 5)
+		 * Displayed when inspection hits a security check / bot challenge / 401 / 403.
+		 * Never attempts to solve or bypass CAPTCHAs.
+		 * @param {HTMLFormElement} form
+		 * @param {string} reason
+		 * @param {string} destinationOrigin
+		 */
+		showUnverifiedDestinationBanner(form, reason, destinationOrigin) {
+			let banner = form.querySelector('[data-phishlens-ui="unverified-banner"]');
+			if (banner) return;
+
+			banner = document.createElement('div');
+			banner.setAttribute('data-phishlens-ui', 'unverified-banner');
+			banner.setAttribute('role', 'alert');
+			banner.setAttribute('aria-live', 'assertive');
+			banner.style.cssText = `
+				margin: 12px 0;
+				padding: 14px 16px;
+				border-radius: 8px;
+				background: #27272a;
+				border: 2px solid #eab308;
+				color: #fef08a;
+				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+				font-size: 13px;
+				line-height: 1.5;
+				display: flex;
+				flex-direction: column;
+				gap: 10px;
+				z-index: 10000;
+			`;
+
+			banner.innerHTML = `
+				<div style="display: flex; align-items: flex-start; gap: 8px;">
+					<span style="font-size: 20px; line-height: 1;">🛡️</span>
+					<div>
+						<strong style="color: #fde047; font-size: 14px;">Unverified Destination</strong>
+						<p style="margin: 4px 0 0 0; color: #fef9c3;">
+							We couldn't verify the destination page because access is blocked by a security check. Treat this destination as unverified and proceed cautiously.
+						</p>
+						<p style="margin: 4px 0 0 0; font-size: 11px; color: #a1a1aa;">
+							Target: <code>${destinationOrigin}</code>
+						</p>
+					</div>
+				</div>
+				<div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
+					<button type="button" id="phishlens-btn-unverified-cancel" style="padding: 5px 12px; border-radius: 4px; border: 1px solid #71717a; background: #3f3f46; color: #fff; cursor: pointer; font-size: 12px;">
+						Cancel
+					</button>
+					<button type="button" id="phishlens-btn-unverified-proceed" style="padding: 5px 12px; border-radius: 4px; border: 1px solid #ca8a04; background: #eab308; color: #000; cursor: pointer; font-size: 12px; font-weight: 600;">
+						Proceed with Caution
+					</button>
+				</div>
+			`;
+
+			banner.querySelector('#phishlens-btn-unverified-cancel').addEventListener('click', () => {
+				banner.remove();
+			});
+
+			banner.querySelector('#phishlens-btn-unverified-proceed').addEventListener('click', () => {
+				banner.remove();
+				FormLockGuard.proceedWithNativeSubmit(form);
+			});
+
+			form.prepend(banner);
 		},
 
 		/**
@@ -745,17 +856,40 @@
 		const target = /** @type {HTMLElement} */ (e.target);
 		if (!target || isExtensionUI(target)) return;
 
+		// Track submit button clicked
 		const btn = target.closest('button, input[type="submit"], input[type="image"], input[type="button"]');
 		if (btn) {
 			lastClickedSubmitButton = btn;
 			lastClickedTime = Date.now();
+
+			// If the button is inside a form and the form is not yet locked or bypassing, check if it's a submit action
+			const form = btn.closest('form');
+			if (form && !form.__phishLensBypassSubmission && !form.hasAttribute('data-phishlens-locked') && !form.hasAttribute('data-phishlens-blocked')) {
+				const isSubmit = btn.type === 'submit' || !btn.type || (btn.tagName === 'INPUT' && btn.type === 'image');
+				if (isSubmit) {
+					// Check target action
+					let targetAction = btn.getAttribute('formaction') || form.getAttribute('action') || form.action || '';
+					const destinationOrigin = getSafeOrigin(targetAction) || window.location.origin;
+					const formMeta = getSafeFormMetadata(form);
+					formMeta.destinationOrigin = destinationOrigin;
+					formMeta.isCrossOrigin = destinationOrigin !== window.location.origin;
+					formMeta.isIdP = isKnownLegitimateIdP(destinationOrigin);
+
+					if (formMeta.isSensitive || formMeta.isCrossOrigin) {
+						e.preventDefault();
+						e.stopImmediatePropagation();
+						FormLockGuard.evaluateAndProtect(form, targetAction, destinationOrigin, formMeta);
+						return;
+					}
+				}
+			}
 		}
 
 		// Phase 4: Check for UI redressing on every click (non-blocking)
 		if (_p4_runClickRedressingCheck) {
 			_p4_runClickRedressingCheck(/** @type {MouseEvent} */ (e));
 		}
-	}, { capture: true, passive: true });
+	}, { capture: true });
 
 	// 2. Capture-phase submission interception
 	document.addEventListener('submit', (e) => {
@@ -975,6 +1109,10 @@
 		if (element.children && element.children.length > 0) {
 			element.querySelectorAll('form').forEach(inspectAddedNode);
 			element.querySelectorAll('input').forEach(inspectAddedNode);
+		}
+
+		if (isPageFlaggedAsPhishing) {
+			enforceInputLockdown();
 		}
 	}
 
@@ -1406,11 +1544,368 @@
 		}
 	};
 
-	// Launch Phase 4 after DOM is ready
+	// Phase 5: Client-side Interstitial & Bot Challenge Detector
+	function _checkClientInterstitial() {
+		const title = (document.title || '').toLowerCase();
+		const bodyText = (document.body ? document.body.innerText || '' : '').toLowerCase().slice(0, 3000);
+
+		const botKeywords = [
+			'just a moment...',
+			'attention required! | cloudflare',
+			'security check',
+			'verify you are human',
+			'ddos-guard',
+			'hcaptcha challenge',
+			'recaptcha',
+			'checking your browser before accessing',
+			'cf-browser-verification'
+		];
+
+		const matched = botKeywords.find(kw => title.includes(kw) || bodyText.includes(kw));
+		if (matched) {
+			emitBehavioralSignal({
+				type: 'INTERSTITIAL_CAPTCHA_DETECTED',
+				severity: 'medium',
+				confidence: 0.95,
+				details: {
+					matchedKeyword: matched,
+					title: document.title,
+					reason: "We couldn't verify the destination page because access is blocked by a security check. Treat this destination as unverified and proceed cautiously."
+				}
+			});
+		}
+	}
+
+	/**
+	 * Pre-emptively lock all forms, inputs, and interactive fields across the entire page
+	 * when the site is verified as phishing.
+	 * Prevents any credential entry before submission is even attempted.
+	 */
+	function lockEntirePageFormsDueToPhishing() {
+		isPageFlaggedAsPhishing = true;
+
+		// 1. Lock all form tags with accessible warning and override options
+		const forms = document.querySelectorAll('form');
+		forms.forEach((f) => {
+			FormLockGuard.block(
+				f,
+				'This website has been identified as a dangerous phishing threat. All input fields have been locked to protect your data.',
+				window.location.origin
+			);
+		});
+
+		// 2. Lock ALL inputs, textareas, selects, editable areas, and buttons on the entire page
+		// (including standalone inputs, frameless login boxes, and custom components)
+		enforceInputLockdown();
+
+		// 3. Ensure a persistent page-wide banner is rendered at the top of the viewport
+		ensureGlobalPhishingBanner();
+
+		// 4. Start interval enforcement to defeat dynamic mutation / script re-enablement
+		if (!phishingLockInterval) {
+			phishingLockInterval = setInterval(() => {
+				if (!isPageFlaggedAsPhishing) {
+					clearInterval(phishingLockInterval);
+					phishingLockInterval = null;
+					return;
+				}
+				enforceInputLockdown();
+			}, 350);
+		}
+	}
+
+	function enforceInputLockdown() {
+		if (!isPageFlaggedAsPhishing) return;
+		const allControls = document.querySelectorAll('input:not([type="hidden"]), select, textarea, [contenteditable="true"], button');
+		allControls.forEach((control) => {
+			if (isExtensionUI(control)) return;
+
+			const htmlEl = /** @type {HTMLElement} */ (control);
+			htmlEl.setAttribute('data-phishlens-disabled', 'true');
+			htmlEl.setAttribute('aria-disabled', 'true');
+			htmlEl.setAttribute('disabled', 'true');
+			htmlEl.setAttribute('readonly', 'true');
+			htmlEl.setAttribute('tabindex', '-1');
+
+			if ('disabled' in htmlEl) {
+				/** @type {HTMLInputElement} */ (htmlEl).disabled = true;
+			}
+			if ('readOnly' in htmlEl) {
+				/** @type {HTMLInputElement} */ (htmlEl).readOnly = true;
+			}
+
+			htmlEl.style.setProperty('pointer-events', 'none', 'important');
+			htmlEl.style.setProperty('opacity', '0.45', 'important');
+			htmlEl.style.setProperty('cursor', 'not-allowed', 'important');
+			htmlEl.style.setProperty('user-select', 'none', 'important');
+
+			// If any element is currently focused, blur it immediately
+			if (document.activeElement === htmlEl) {
+				htmlEl.blur();
+			}
+		});
+	}
+
+	/**
+	 * Intercept ALL keyboard typing, pasting, dropping, and input events at the capture phase.
+	 * This guarantees that even if an input element lacks disabled styling or was focused,
+	 * NOT A SINGLE KEYSTROKE OR CLIPBOARD CHARACTER can be entered into any form field.
+	 */
+	function interceptAllInputsWhenPhishing(e) {
+		if (!isPageFlaggedAsPhishing) return;
+		if (e.target && isExtensionUI(e.target)) return;
+
+		const target = /** @type {HTMLElement} */ (e.target);
+		const tag = (target && target.tagName ? target.tagName.toLowerCase() : '');
+		const isInputTarget = tag === 'input' || tag === 'textarea' || tag === 'select' || (target && target.isContentEditable);
+
+		if (isInputTarget || e.type === 'paste' || e.type === 'drop') {
+			e.preventDefault();
+			e.stopPropagation();
+			e.stopImmediatePropagation();
+			if (target && typeof target.blur === 'function') {
+				target.blur();
+			}
+			return false;
+		}
+	}
+
+	const CAPTURE_INTERCEPT_EVENTS = [
+		'keydown', 'keypress', 'keyup', 'beforeinput', 'input',
+		'compositionstart', 'compositionupdate', 'compositionend',
+		'paste', 'drop', 'cut'
+	];
+	CAPTURE_INTERCEPT_EVENTS.forEach((evtName) => {
+		window.addEventListener(evtName, interceptAllInputsWhenPhishing, { capture: true, passive: false });
+		document.addEventListener(evtName, interceptAllInputsWhenPhishing, { capture: true, passive: false });
+	});
+
+	function ensureGlobalPhishingBanner() {
+		if (document.getElementById('phishlens-global-phishing-banner')) return;
+		const banner = document.createElement('div');
+		banner.id = 'phishlens-global-phishing-banner';
+		banner.setAttribute('data-phishlens-ui', 'global-banner');
+		banner.setAttribute('role', 'alert');
+		banner.setAttribute('aria-live', 'assertive');
+		banner.style.cssText = `
+			position: fixed !important;
+			top: 0 !important;
+			left: 0 !important;
+			width: 100% !important;
+			z-index: 2147483647 !important;
+			background: linear-gradient(90deg, #991b1b, #7f1d1d) !important;
+			color: #ffffff !important;
+			padding: 12px 20px !important;
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+			font-size: 14px !important;
+			line-height: 1.4 !important;
+			box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+			display: flex !important;
+			align-items: center !important;
+			justify-content: space-between !important;
+			box-sizing: border-box !important;
+			gap: 16px !important;
+		`;
+		banner.innerHTML = `
+			<div style="display: flex; align-items: center; gap: 12px;">
+				<span style="font-size: 22px;">🛡️</span>
+				<div>
+					<strong style="font-size: 15px; color: #fecaca;">PhishLens Security Alert: Phishing Site Detected</strong>
+					<div style="color: #fee2e2; font-size: 13px; margin-top: 2px;">
+						This site is flagged as dangerous phishing. All input fields and forms have been locked to protect your data.
+					</div>
+				</div>
+			</div>
+			<div style="display: flex; gap: 10px; align-items: center; flex-shrink: 0;">
+				<button type="button" id="phishlens-global-goback" style="background: #374151; color: #fff; border: 1px solid #4b5563; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;">
+					Go Back
+				</button>
+				<button type="button" id="phishlens-global-closetab" style="background: #dc2626; color: #fff; border: 1px solid #b91c1c; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
+					Close Tab
+				</button>
+				<button type="button" id="phishlens-global-override" style="background: transparent; color: #fca5a5; border: none; text-decoration: underline; padding: 4px 8px; font-size: 12px; cursor: pointer;">
+					Proceed Anyway (Unsafe)
+				</button>
+			</div>
+		`;
+		(document.body || document.documentElement).prepend(banner);
+
+		const goBackBtn = banner.querySelector('#phishlens-global-goback');
+		if (goBackBtn) {
+			goBackBtn.addEventListener('click', () => {
+				if (window.history.length > 1) {
+					window.history.back();
+				} else {
+					chrome.runtime.sendMessage({ action: 'closeCurrentTab' });
+				}
+			});
+		}
+
+		const closeTabBtn = banner.querySelector('#phishlens-global-closetab');
+		if (closeTabBtn) {
+			closeTabBtn.addEventListener('click', () => {
+				chrome.runtime.sendMessage({ action: 'closeCurrentTab' });
+			});
+		}
+
+		const overrideBtn = banner.querySelector('#phishlens-global-override');
+		if (overrideBtn) {
+			overrideBtn.addEventListener('click', () => {
+				unlockEntirePageAfterUserOverride();
+			});
+		}
+	}
+
+	function unlockEntirePageAfterUserOverride() {
+		isPageFlaggedAsPhishing = false;
+		if (phishingLockInterval) {
+			clearInterval(phishingLockInterval);
+			phishingLockInterval = null;
+		}
+		const banner = document.getElementById('phishlens-global-phishing-banner');
+		if (banner) banner.remove();
+
+		// Unlock all form elements
+		const lockedControls = document.querySelectorAll('[data-phishlens-disabled="true"]');
+		lockedControls.forEach((control) => {
+			const htmlControl = /** @type {HTMLElement} */ (control);
+			htmlControl.removeAttribute('data-phishlens-disabled');
+			htmlControl.removeAttribute('aria-disabled');
+			htmlControl.removeAttribute('disabled');
+			htmlControl.removeAttribute('readonly');
+			htmlControl.removeAttribute('tabindex');
+			if ('disabled' in htmlControl) /** @type {HTMLInputElement} */ (htmlControl).disabled = false;
+			if ('readOnly' in htmlControl) /** @type {HTMLInputElement} */ (htmlControl).readOnly = false;
+			htmlControl.style.removeProperty('pointer-events');
+			htmlControl.style.removeProperty('opacity');
+			htmlControl.style.removeProperty('cursor');
+			htmlControl.style.removeProperty('user-select');
+		});
+
+		const forms = document.querySelectorAll('form[data-phishlens-blocked="true"]');
+		forms.forEach(f => FormLockGuard.unlock(f));
+	}
+
+	// Listen for immediate lock notification from background worker
+	chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+		if (msg.action === 'lockAllFormsDueToPhishing') {
+			lockEntirePageFormsDueToPhishing();
+			sendResponse({ status: 'locked' });
+		}
+	});
+
+	// Check on page load if this domain is already confirmed as phishing
+	function checkAndEnforceDomainPhishState() {
+		try {
+			// 1. Direct local storage check for instant zero-latency lockdown
+			chrome.storage.local.get([window.location.hostname], (res) => {
+				if (res && res[window.location.hostname] && res[window.location.hostname].status === 'phishing') {
+					lockEntirePageFormsDueToPhishing();
+				}
+			});
+		} catch (e) {}
+
+		// 2. Background service worker query with retries
+		let retryCount = 0;
+		const maxRetries = 6;
+		function queryWorker() {
+			try {
+				chrome.runtime.sendMessage({
+					action: 'getCheckResult',
+					domain: window.location.hostname,
+					fullUrl: window.location.href
+				}, (resp) => {
+					if (resp && resp.phish === 'phishing') {
+						lockEntirePageFormsDueToPhishing();
+					} else if ((!resp || !resp.phish) && retryCount < maxRetries) {
+						retryCount++;
+						setTimeout(queryWorker, retryCount * 400);
+					}
+				});
+			} catch (e) {}
+		}
+		queryWorker();
+	}
+
+	// Launch Phase 4, Phase 5 & Proactive Phishing Form Locking
 	if (document.readyState === 'loading') {
-		document.addEventListener('DOMContentLoaded', _p4_runVisualThreatDetection, { once: true });
+		document.addEventListener('DOMContentLoaded', () => {
+			_checkPageTestScenarioMeta();
+			checkAndEnforceDomainPhishState();
+			_checkClientInterstitial();
+			_p4_runVisualThreatDetection();
+		}, { once: true });
 	} else {
+		_checkPageTestScenarioMeta();
+		checkAndEnforceDomainPhishState();
+		_checkClientInterstitial();
 		_p4_runVisualThreatDetection();
+	}
+
+	/**
+	 * Developer test-mode meta tag detection.
+	 *
+	 * Pages under test can embed a <meta> tag that explicitly declares their scenario type.
+	 * This bypasses URL-based classification (which would whitelist trusted hosts like github.io).
+	 *
+	 * Usage in a test/mock HTML page:
+	 *   <meta name="x-phishlens-scenario" content="phishing">
+	 *   <meta name="x-phishlens-scenario" content="suspicious">
+	 *   <meta name="x-phishlens-scenario" content="unverified">
+	 *   <meta name="x-phishlens-scenario" content="benign">
+	 *
+	 * The extension reads this ONLY on page load and treats it as an authoritative
+	 * developer-declared ground-truth for the page's threat type.
+	 */
+	function _checkPageTestScenarioMeta() {
+		const metaTag = document.querySelector('meta[name="x-phishlens-scenario"]');
+		if (!metaTag) return;
+
+		const scenario = (metaTag.getAttribute('content') || '').trim().toLowerCase();
+		if (!scenario) return;
+
+		console.log('[PhishLens Test Mode] Meta scenario declared:', scenario, 'on', window.location.href);
+
+		if (scenario === 'phishing') {
+			lockEntirePageFormsDueToPhishing();
+			// Also notify the service worker so it stores the verdict for this domain
+			try {
+				chrome.runtime.sendMessage({
+					action: 'behavioralThreatSignal',
+					payload: {
+						type: 'TEST_SCENARIO_PHISHING_DECLARED',
+						severity: 'critical',
+						confidence: 1.0,
+						url: window.location.href,
+						details: {
+							source: 'x-phishlens-scenario meta tag',
+							scenarioFile: window.location.pathname
+						}
+					}
+				});
+			} catch (e) {}
+		} else if (scenario === 'suspicious') {
+			emitBehavioralSignal({
+				type: 'TEST_SCENARIO_SUSPICIOUS_DECLARED',
+				severity: 'high',
+				confidence: 0.9,
+				details: { source: 'x-phishlens-scenario meta tag', scenarioFile: window.location.pathname }
+			});
+		} else if (scenario === 'unverified') {
+			emitBehavioralSignal({
+				type: 'INTERSTITIAL_CAPTCHA_DETECTED',
+				severity: 'medium',
+				confidence: 0.95,
+				details: {
+					matchedKeyword: 'test-scenario',
+					title: document.title,
+					reason: "We couldn't verify the destination page because access is blocked by a security check. Treat this destination as unverified and proceed cautiously."
+				}
+			});
+		} else if (scenario === 'benign') {
+			// No action — benign pages should not be flagged
+			console.log('[PhishLens Test Mode] Benign scenario — no threat signals emitted');
+		}
 	}
 
 })();

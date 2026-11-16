@@ -162,6 +162,12 @@ async function renderStatus(phishStatus, url) {
 				statusContainer.appendChild(reportParent);
 			}
 		},
+		onUnverified: async () => {
+			setElementText(statusElement, 'Unverified Destination 🛡️');
+			setElementText(warningElement, "We couldn't verify the destination page because access is blocked by a security check. Treat this destination as unverified and proceed cautiously.");
+			warningElement.className = warningElementTwStyles;
+			toggleTwClass(popupHeader, 'bg-', 'bg-yellow-600');
+		},
 		onDefault: async () => {
 			// Domain not yet checked by backend (e.g. first visit with backend just starting)
 			setElementText(statusElement, 'Not checked yet');
@@ -266,7 +272,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 	}
 
 	if (openAiKeyInput) {
-		openAiKeyInput.addEventListener('change', () => {
+		const saveKey = () => {
 			const key = openAiKeyInput.value.trim();
 			chrome.storage.local.set({ openaiApiKey: key }, () => {
 				if (openAiKeySaved) {
@@ -274,7 +280,9 @@ document.addEventListener('DOMContentLoaded', async function () {
 					setTimeout(() => openAiKeySaved.classList.add('hidden'), 2500);
 				}
 			});
-		});
+		};
+		openAiKeyInput.addEventListener('input', saveKey);
+		openAiKeyInput.addEventListener('change', saveKey);
 	}
 
 	// --- Main check ---
@@ -298,11 +306,30 @@ document.addEventListener('DOMContentLoaded', async function () {
 			title.textContent = '⚡ Dynamic Behavioural Signals:';
 			banner.appendChild(title);
 
+			const humanReadableReasons = {
+				'DYNAMIC_SENSITIVE_INPUT_INSERTED': 'Delayed credential field dynamically inserted into DOM',
+				'DYNAMIC_FORM_INSERTED': 'Hidden/delayed form dynamically injected into page',
+				'DYNAMIC_LOGIN_MODAL_OVERLAY': 'Deceptive login modal overlay presented to user',
+				'HIDDEN_FORM_REVEALED': 'Previously hidden form suddenly made visible',
+				'HIDDEN_SENSITIVE_INPUT_REVEALED': 'Hidden password or payment input revealed',
+				'FORM_ACTION_MODIFIED': 'Form submission destination modified at runtime',
+				'SUSPICIOUS_CROSS_ORIGIN_SUBMIT': 'Login form sends data to an unexpected external destination',
+				'CLICKJACKING_OVERLAY_DETECTED': 'A transparent overlay may be intercepting your clicks',
+				'CLICK_TARGET_MISMATCH': 'Visual click target differs from actual DOM recipient',
+				'IMAGE_BRAND_IMPERSONATION': 'Recognizable brand login prompt rendered as static image',
+				'QR_CODE_PHISHING_CONFIRMED': 'Scanned QR code leads to a confirmed phishing destination',
+				'QR_CODE_UNVERIFIED': 'Unverified QR destination (could not decode safely)',
+				'INTERSTITIAL_CAPTCHA_DETECTED': 'Page access blocked by security check/bot challenge',
+				'OUT_OF_BAND_CROSS_ORIGIN_REQUEST': 'Out-of-band request to external domain after credential interaction',
+				'SUSPICIOUS_MULTI_HOP_REDIRECT_CHAIN': 'Multi-hop cross-domain redirect chain detected'
+			};
+
 			bRes.signals.slice(-5).forEach((sig) => {
 				const item = document.createElement('div');
 				item.className = 'text-[11px] text-zinc-300';
 				const severity = sig.severity ? ` [${sig.severity}]` : '';
-				item.textContent = `• ${sig.type}${severity}`;
+				const friendlyDesc = humanReadableReasons[sig.type] || sig.type;
+				item.textContent = `• ${friendlyDesc}${severity}`;
 				banner.appendChild(item);
 			});
 
@@ -400,9 +427,10 @@ function setupOpenAIInsights({ url, domain, verdict, tabId }) {
 
 		if (refreshBtn) {
 			refreshBtn.addEventListener('click', () => {
-				// Re-read storage in case key was just entered
+				// Re-read storage in case key was just entered or changed in input
 				chrome.storage.local.get(['openaiApiKey'], (curr) => {
-					stored.openaiApiKey = curr.openaiApiKey;
+					const inputKey = openAiKeyInput ? openAiKeyInput.value.trim() : '';
+					stored.openaiApiKey = inputKey || curr.openaiApiKey;
 					fetchExplanation();
 				});
 			});

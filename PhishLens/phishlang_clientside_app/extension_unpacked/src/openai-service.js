@@ -14,8 +14,12 @@
  * @returns {Promise<{ explanation: string, threatSummary: string, recommendations: string[] }>}
  */
 export async function generateSiteExplanationWithOpenAI(apiKey, { url, domain, verdict, signals = [] }) {
-	if (!apiKey || typeof apiKey !== 'string' || !apiKey.startsWith('sk-')) {
-		throw new Error('Please provide a valid OpenAI API key starting with "sk-".');
+	const trimmedKey = (apiKey || '').trim();
+	if (!trimmedKey) {
+		throw new Error('Please enter your OpenAI API key in User Settings above.');
+	}
+	if (!trimmedKey.startsWith('sk-')) {
+		throw new Error('Invalid key format: OpenAI API keys usually start with "sk-".');
 	}
 
 	const signalsSummary = signals.length > 0

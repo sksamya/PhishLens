@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="x-phishlens-scenario" content="benign">
+  <meta charset="UTF-8">
+  <title>Mock 2: Legitimate OAuth Federated Auth</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    .oauth-btn { display: inline-block; padding: 0.75rem 1.25rem; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h2>Federated Single Sign-On (OAuth 2.0)</h2>
+  <p>Submits to legitimate Google/Microsoft identity provider.</p>
+  <form id="oauth-form" action="https://accounts.google.com/o/oauth2/v2/auth" method="GET">
+    <input type="hidden" name="client_id" value="123456789.apps.googleusercontent.com">
+    <input type="hidden" name="redirect_uri" value="https://example.com/oauth/callback">
+    <input type="hidden" name="response_type" value="code">
+    <input type="hidden" name="scope" value="openid email profile">
+    <button type="submit" class="oauth-btn">Sign in with Google</button>
+  </form>
+</body>
+</html>

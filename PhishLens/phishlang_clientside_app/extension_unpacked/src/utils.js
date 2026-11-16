@@ -18,6 +18,15 @@ async function onPhishStatusAsync(event, callbacks) {
 		case 'safe':
 			await callbacks.onSafe();
 			break
+		case 'unverified':
+			if (callbacks.onUnverified) {
+				await callbacks.onUnverified();
+			} else if (callbacks.onSuspicious) {
+				await callbacks.onSuspicious();
+			} else {
+				await callbacks.onSafe();
+			}
+			break
 		default:
 			if (callbacks.onDefault === undefined) {
 				await callbacks.onSafe();

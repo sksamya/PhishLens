@@ -11,18 +11,47 @@ import requests
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Resolve model path (mobilebert_model or src/model)
+# Resolve model path
 current_dir = Path(__file__).resolve().parent
-model_dir = current_dir / "mobilebert_model"
-if not model_dir.exists():
-    model_dir = current_dir.parent / "src" / "model"
-if not model_dir.exists():
-    model_dir = current_dir / "src" / "model"
+candidates = [
+    current_dir / "src" / "model",
+    current_dir / "PhishLens" / "src" / "model",
+    current_dir / "mobilebert_model",
+    current_dir / "PhishLens" / "mobilebert_model",
+    current_dir.parent / "src" / "model",
+]
+model_dir = None
+for c in candidates:
+    if c.exists() and (c / "model.safetensors").exists():
+        model_dir = c
+        break
+
+if not model_dir:
+    raise FileNotFoundError("Could not locate model folder containing model.safetensors")
 
 print(f"Loading MobileBERT model from: {model_dir}")
 model = MobileBertForSequenceClassification.from_pretrained(str(model_dir))
 tokenizer = MobileBertTokenizer.from_pretrained(str(model_dir))
 print("Model loaded successfully!")
+
+# Bot challenge and interstitial signature patterns
+BOT_CHALLENGE_KEYWORDS = [
+    'just a moment...',
+    'attention required! | cloudflare',
+    'security check',
+    'verify you are human',
+    'ddos-guard',
+    'hcaptcha challenge',
+    'recaptcha',
+    'bot verification',
+    'access denied',
+    'checking your browser before accessing',
+    'please complete the security check to access',
+    'cf-browser-verification',
+    'ray id:',
+    'challenges.cloudflare.com',
+    'turnstile.render'
+]
 
 # Function to fetch HTML content from a URL
 def fetch_html(url):
@@ -30,12 +59,36 @@ def fetch_html(url):
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        return response.text
+        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        return {
+            'text': response.text,
+            'status_code': response.status_code,
+            'final_url': response.url
+        }
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code if e.response is not None else 500
+        return {
+            'text': e.response.text if e.response is not None else '',
+            'status_code': status,
+            'error': str(e)
+        }
     except Exception as e:
         print(f"Error fetching URL {url}: {e}")
         return None
+
+def check_interstitial_or_captcha(html_text, status_code=200):
+    if status_code in (401, 403):
+        return True, f"HTTP {status_code} Access Denied state"
+    
+    if not html_text:
+        return False, None
+        
+    lower = html_text.lower()
+    for kw in BOT_CHALLENGE_KEYWORDS:
+        if kw in lower:
+            return True, f"Security challenge detected ({kw})"
+            
+    return False, None
 
 # Functions for parsing the HTML content
 def generate_text_representation(html_content):
@@ -112,32 +165,47 @@ def index():
 def health():
     return jsonify({'status': 'ok'})
 
-# Prediction endpoints (supporting multiple common naming conventions)
+# Prediction endpoints
 @app.route('/check_url', methods=['POST'])
 @app.route('/predict', methods=['POST'])
 @app.route('/scan', methods=['POST'])
 def check_url():
     data = request.get_json(silent=True) or {}
     url = data.get('url', '')
-    html_content = data.get('html')
+    raw_html = data.get('html')
+    status_code = 200
     
-    if not html_content and url:
-        html_content = fetch_html(url)
+    if not raw_html and url:
+        fetched = fetch_html(url)
+        if fetched:
+            raw_html = fetched.get('text', '')
+            status_code = fetched.get('status_code', 200)
     
-    if html_content:
-        prediction = predict_phishing(html_content)
-        label_map = {0: 'benign', 1: 'phishing'}
-        result = label_map.get(prediction, 'benign')
+    # Phase 5: Check for bot challenges, CAPTCHAs, or HTTP 401/403 access-denied states
+    is_blocked, block_reason = check_interstitial_or_captcha(raw_html, status_code)
+    if is_blocked:
+        return jsonify({
+            'result': 'unverified',
+            'status': 'unverified',
+            'is_interstitial_blocked': True,
+            'reason': "We couldn't verify the destination page because access is blocked by a security check. Treat this destination as unverified and proceed cautiously.",
+            'details': block_reason
+        }), 200
+
+    if raw_html:
+        prediction = predict_phishing(raw_html)
+        # 0 = safe/benign, 1 = phishing
+        label_map = {0: 'safe', 1: 'phishing'}
+        result = label_map.get(prediction, 'safe')
         return jsonify({
             'result': result,
             'prediction': prediction,
             'status': result
         })
     else:
-        # Default fallback to benign if fetching failed or page cannot be parsed
         return jsonify({
-            'result': 'safe',
-            'status': 'safe',
+            'result': 'unverified',
+            'status': 'unverified',
             'warning': 'Unable to fetch page HTML'
         }), 200
 

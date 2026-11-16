@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="x-phishlens-scenario" content="benign">
+  <meta charset="UTF-8">
+  <title>Mock 1: Static Benign Login</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    form { max-width: 320px; display: flex; flex-direction: column; gap: 0.75rem; }
+    input, button { padding: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h2>Static Benign Login Form</h2>
+  <p>Submits directly to own origin with standard fields.</p>
+  <form id="benign-login" action="/login" method="POST">
+    <label>Username / Email: <input type="email" name="username" required autocomplete="username"></label>
+    <label>Password: <input type="password" name="password" required autocomplete="current-password"></label>
+    <button type="submit" id="submit-btn">Log In</button>
+  </form>
+</body>
+</html>

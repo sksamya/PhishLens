@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="x-phishlens-scenario" content="phishing">
+  <meta charset="UTF-8">
+  <title>Mock 7: QR Code Phishing & Benign Test</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    .qr-card { display: inline-block; padding: 1rem; border: 1px solid #ccc; border-radius: 8px; margin: 1rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <h2>QR Code Verification Suite (Quishing)</h2>
+  
+  <div class="qr-card">
+    <h3>Benign QR Code</h3>
+    <p>Points to legitimate corporate portal</p>
+    <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><rect width='160' height='160' fill='white'/><rect x='20' y='20' width='40' height='40' fill='black'/><rect x='100' y='20' width='40' height='40' fill='black'/><rect x='20' y='100' width='40' height='40' fill='black'/></svg>" 
+         alt="QR Code" width="160" height="160" data-qr-target="https://google.com">
+  </div>
+
+  <div class="qr-card">
+    <h3>Malicious Phishing QR Code</h3>
+    <p>Points to external harvest destination</p>
+    <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><rect width='160' height='160' fill='white'/><rect x='20' y='20' width='40' height='40' fill='black'/><rect x='100' y='20' width='40' height='40' fill='black'/><rect x='20' y='100' width='40' height='40' fill='black'/></svg>" 
+         alt="Login QR code scan to verify account" width="160" height="160" data-qr-target="https://f6e83d-social.alerting-services.com/login">
+  </div>
+</body>
+</html>
