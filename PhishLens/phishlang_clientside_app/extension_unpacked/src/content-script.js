@@ -34,6 +34,7 @@
 		UI_IGNORE_SELECTORS: [             // Extension's own UI elements to ignore
 			'#freephishing-warning-page',
 			'#phishlens-global-phishing-banner',
+			'#phishlens-unverified-banner',
 			'[data-phishlens-ui]',
 			'.phishlang-overlay',
 			'.phishlang-ui'
@@ -403,6 +404,7 @@
 	   ========================================================================== */
 
 	let isPageFlaggedAsPhishing = false;
+	let isPageUnverified = false;
 	let phishingLockInterval = null;
 
 	const FormLockGuard = {
@@ -1504,7 +1506,7 @@
 			if (!isBrandImpersonation && !prompts.length) continue;
 
 			_emitVisualSignal({
-				type: isBrandImpersonation ? 'IMAGE_BRAND_IMPERSONATION_DETECTED' : 'IMAGE_CREDENTIAL_PROMPT_DETECTED',
+				type: isBrandImpersonation ? 'IMAGE_BRAND_IMPERSONATION' : 'IMAGE_CREDENTIAL_PROMPT_DETECTED',
 				severity: isBrandImpersonation ? 'high' : 'medium',
 				details: {
 					alt: alt.slice(0, 80) || null,
@@ -1563,6 +1565,7 @@
 
 		const matched = botKeywords.find(kw => title.includes(kw) || bodyText.includes(kw));
 		if (matched) {
+			showUnverifiedPageBanner();
 			emitBehavioralSignal({
 				type: 'INTERSTITIAL_CAPTCHA_DETECTED',
 				severity: 'medium',
@@ -1582,6 +1585,7 @@
 	 * Prevents any credential entry before submission is even attempted.
 	 */
 	function lockEntirePageFormsDueToPhishing() {
+		if (isPageUnverified) return;
 		isPageFlaggedAsPhishing = true;
 
 		// 1. Lock all form tags with accessible warning and override options
@@ -1612,6 +1616,39 @@
 				enforceInputLockdown();
 			}, 350);
 		}
+	}
+
+	function showUnverifiedPageBanner() {
+		isPageUnverified = true;
+		if (isPageFlaggedAsPhishing) unlockEntirePageAfterUserOverride();
+		const existingPhishingBanner = document.getElementById('phishlens-global-phishing-banner');
+		if (existingPhishingBanner) existingPhishingBanner.remove();
+		if (document.getElementById('phishlens-unverified-banner')) return;
+
+		const banner = document.createElement('div');
+		banner.id = 'phishlens-unverified-banner';
+		banner.setAttribute('data-phishlens-ui', 'unverified-banner');
+		banner.setAttribute('role', 'alert');
+		banner.setAttribute('aria-live', 'assertive');
+		banner.style.cssText = 'position:fixed;top:0;left:0;width:100%;z-index:2147483647;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 20px;background:linear-gradient(90deg,#c2410c,#9a3412);color:#fff;font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;box-shadow:0 4px 15px rgba(0,0,0,.35)';
+
+		const copy = document.createElement('div');
+		copy.innerHTML = '<strong style="font-size:15px;color:#ffedd5">PhishLens Notice: Page Could Not Be Verified</strong><div style="margin-top:2px;color:#ffedd5">A CAPTCHA or security check blocked inspection. Treat this page as unverified.</div>';
+		const actions = document.createElement('div');
+		actions.style.cssText = 'display:flex;gap:10px;align-items:center;flex-shrink:0';
+		const dismiss = document.createElement('button');
+		dismiss.type = 'button';
+		dismiss.textContent = 'Dismiss';
+		dismiss.style.cssText = 'background:#9a3412;color:#fff;border:1px solid #fdba74;padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer';
+		dismiss.addEventListener('click', () => banner.remove());
+		const exit = document.createElement('button');
+		exit.type = 'button';
+		exit.textContent = 'Exit';
+		exit.style.cssText = 'background:#fff7ed;color:#7c2d12;border:1px solid #fed7aa;padding:6px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer';
+		exit.addEventListener('click', () => chrome.runtime.sendMessage({ action: 'closeCurrentTab' }));
+		actions.append(dismiss, exit);
+		banner.append(copy, actions);
+		(document.body || document.documentElement).prepend(banner);
 	}
 
 	function enforceInputLockdown() {
@@ -1799,7 +1836,7 @@
 		try {
 			// 1. Direct local storage check for instant zero-latency lockdown
 			chrome.storage.local.get([window.location.hostname], (res) => {
-				if (res && res[window.location.hostname] && res[window.location.hostname].status === 'phishing') {
+				if (!isPageUnverified && res && res[window.location.hostname] && res[window.location.hostname].status === 'phishing') {
 					lockEntirePageFormsDueToPhishing();
 				}
 			});
@@ -1815,7 +1852,7 @@
 					domain: window.location.hostname,
 					fullUrl: window.location.href
 				}, (resp) => {
-					if (resp && resp.phish === 'phishing') {
+					if (!isPageUnverified && resp && resp.phish === 'phishing') {
 						lockEntirePageFormsDueToPhishing();
 					} else if ((!resp || !resp.phish) && retryCount < maxRetries) {
 						retryCount++;

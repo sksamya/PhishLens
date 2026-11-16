@@ -1,5 +1,4 @@
 import { onPhishStatusAsync } from './utils.js';
-import { generateSiteExplanationWithGemini } from './gemini-service.js';
 
 /**
  * @param {Element|string} elementOrId
@@ -96,7 +95,7 @@ function toggleTwClass(element, prefix, newClass) {
  * @param {string|undefined} phishStatus
  * @param {URL} url
  */
-async function renderStatus(phishStatus, url) {
+async function renderStatus(phishStatus, url, tabId) {
 	const warningElementTwStyles = 'text-left p-4 pb-2';
 	const warningElement = document.getElementById('warning');
 	const statusElement = document.getElementById('status');
@@ -164,8 +163,34 @@ async function renderStatus(phishStatus, url) {
 		},
 		onUnverified: async () => {
 			setElementText(statusElement, 'Unverified Destination 🛡️');
-			setElementText(warningElement, "We couldn't verify the destination page because access is blocked by a security check. Treat this destination as unverified and proceed cautiously.");
-			warningElement.className = warningElementTwStyles;
+			warningElement.textContent = '';
+			warningElement.className = '';
+			const banner = document.createElement('div');
+			banner.className = 'mt-3 rounded-md p-3 text-left';
+			banner.style.cssText = 'margin-top:12px;border:1px solid #eab308;border-radius:6px;background:#422006;color:#fef3c7;padding:12px;text-align:left';
+			banner.setAttribute('role', 'alert');
+			const message = document.createElement('p');
+			message.className = 'mb-3';
+			message.textContent = 'We could not verify this page. Treat it as unverified and proceed cautiously.';
+			const actions = document.createElement('div');
+			actions.className = 'flex justify-end gap-2';
+			const dismissButton = document.createElement('button');
+			dismissButton.type = 'button';
+			dismissButton.className = 'rounded px-3 py-1.5 text-white';
+			dismissButton.style.cssText = 'border:0;border-radius:4px;background:#a16207;color:white;padding:6px 12px;cursor:pointer';
+			dismissButton.textContent = 'Dismiss';
+			dismissButton.addEventListener('click', () => banner.remove());
+			const exitButton = document.createElement('button');
+			exitButton.type = 'button';
+			exitButton.className = 'rounded px-3 py-1.5 text-white';
+			exitButton.style.cssText = 'border:0;border-radius:4px;background:#3f3f46;color:white;padding:6px 12px;cursor:pointer';
+			exitButton.textContent = 'Exit';
+			exitButton.addEventListener('click', () => {
+				if (Number.isInteger(tabId)) chrome.tabs.remove(tabId);
+			});
+			actions.append(dismissButton, exitButton);
+			banner.append(message, actions);
+			warningElement.appendChild(banner);
 			toggleTwClass(popupHeader, 'bg-', 'bg-yellow-600');
 		},
 		onDefault: async () => {
@@ -185,13 +210,13 @@ async function renderStatus(phishStatus, url) {
  * @param {string} [fullUrl]
  * @returns {Promise<string|undefined>}
  */
-function getCheckResultWithTimeout(domain, fullUrl) {
+function getCheckResultWithTimeout(domain, fullUrl, tabId) {
 	return new Promise((resolve) => {
 		// Hard timeout: if service worker doesn't respond in 4 seconds, resolve with error
 		const timer = setTimeout(() => resolve('backend-offline'), 4000);
 
 		try {
-			chrome.runtime.sendMessage({ action: 'getCheckResult', domain, fullUrl }, (response) => {
+			chrome.runtime.sendMessage({ action: 'getCheckResult', domain, fullUrl, tabId }, (response) => {
 				clearTimeout(timer);
 				if (chrome.runtime.lastError) {
 					console.warn('[PhishLens Popup] Service worker error:', chrome.runtime.lastError.message);
@@ -254,52 +279,9 @@ document.addEventListener('DOMContentLoaded', async function () {
 		return;
 	}
 
-	// Setup checkbox preference and Gemini API key storage
-	const checkboxBlocklist = document.getElementById('checkbox-blocklist');
-	const geminiKeySection = document.getElementById('gemini-key-section');
-	const geminiKeyInput = document.getElementById('gemini-key-input');
-	const geminiKeySaved = document.getElementById('gemini-key-saved');
-
-	if (checkboxBlocklist) {
-		chrome.storage.local.get(['showBlocklist', 'geminiApiKey'], (result) => {
-			const isChecked = !!result.showBlocklist;
-			checkboxBlocklist.checked = isChecked;
-			if (geminiKeySection) {
-				geminiKeySection.classList.toggle('hidden', !isChecked);
-				geminiKeySection.classList.toggle('flex', isChecked);
-			}
-			if (geminiKeyInput && result.geminiApiKey) {
-				geminiKeyInput.value = result.geminiApiKey;
-			}
-		});
-
-		checkboxBlocklist.addEventListener('change', () => {
-			const checked = checkboxBlocklist.checked;
-			if (openAiKeySection) {
-				openAiKeySection.classList.toggle('hidden', !checked);
-				openAiKeySection.classList.toggle('flex', checked);
-			}
-			chrome.storage.local.set({ showBlocklist: checked });
-		});
-	}
-
-	if (geminiKeyInput) {
-		const saveKey = () => {
-			const key = geminiKeyInput.value.trim();
-			chrome.storage.local.set({ geminiApiKey: key }, () => {
-				if (geminiKeySaved) {
-					geminiKeySaved.classList.remove('hidden');
-					setTimeout(() => geminiKeySaved.classList.add('hidden'), 2500);
-				}
-			});
-		};
-		geminiKeyInput.addEventListener('input', saveKey);
-		geminiKeyInput.addEventListener('change', saveKey);
-	}
-
 	// --- Main check ---
-	const phishStatus = await getCheckResultWithTimeout(domain, url.toString());
-	await renderStatus(phishStatus, url);
+	const phishStatus = await getCheckResultWithTimeout(domain, url.toString(), currentTab.id);
+	await renderStatus(phishStatus, url, currentTab.id);
 
 	// --- Behavioral signals panel (Phase 1-4) ---
 	try {
@@ -329,6 +311,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 				'CLICKJACKING_OVERLAY_DETECTED': 'A transparent overlay may be intercepting your clicks',
 				'CLICK_TARGET_MISMATCH': 'Visual click target differs from actual DOM recipient',
 				'IMAGE_BRAND_IMPERSONATION': 'Recognizable brand login prompt rendered as static image',
+				'IMAGE_CREDENTIAL_PROMPT_DETECTED': 'Credential prompt presented inside an image',
 				'QR_CODE_PHISHING_CONFIRMED': 'Scanned QR code leads to a confirmed phishing destination',
 				'QR_CODE_UNVERIFIED': 'Unverified QR destination (could not decode safely)',
 				'INTERSTITIAL_CAPTCHA_DETECTED': 'Page access blocked by security check/bot challenge',
@@ -352,105 +335,4 @@ document.addEventListener('DOMContentLoaded', async function () {
 		console.debug('[PhishLens Popup] getBehavioralSignals failed:', e);
 	}
 
-	// --- Gemini In-Depth Site Security Explanation ---
-	setupGeminiInsights({
-		url: url.toString(),
-		domain,
-		verdict: phishStatus || 'unknown',
-		tabId: currentTab.id
-	});
 });
-
-/**
- * Configure and trigger Gemini in-depth explanation UI
- * @param {object} params
- */
-function setupGeminiInsights({ url, domain, verdict, tabId }) {
-	const container = document.getElementById('gemini-explanation-container');
-	const refreshBtn = document.getElementById('gemini-refresh-btn');
-	const loadingEl = document.getElementById('gemini-loading');
-	const errorEl = document.getElementById('gemini-error');
-	const resultEl = document.getElementById('gemini-result');
-	const summaryEl = document.getElementById('gemini-summary');
-	const explEl = document.getElementById('gemini-explanation');
-	const recsEl = document.getElementById('gemini-recommendations');
-
-	if (!container) return;
-
-	chrome.storage.local.get(['showBlocklist', 'geminiApiKey'], (stored) => {
-		if (!stored.showBlocklist) {
-			container.classList.add('hidden');
-			return;
-		}
-
-		container.classList.remove('hidden');
-
-		async function fetchExplanation() {
-			const apiKey = stored.geminiApiKey;
-			if (!apiKey) {
-				errorEl.textContent = 'Please enter and save your Gemini API key above in User Settings.';
-				errorEl.classList.remove('hidden');
-				resultEl.classList.add('hidden');
-				return;
-			}
-
-			errorEl.classList.add('hidden');
-			loadingEl.classList.remove('hidden');
-			resultEl.classList.add('hidden');
-			if (refreshBtn) refreshBtn.disabled = true;
-
-			try {
-				// Fetch recent behavioral signals to provide rich context to Gemini
-				let signals = [];
-				try {
-					signals = await new Promise((res) => {
-						chrome.runtime.sendMessage({ action: 'getBehavioralSignals', tabId }, (r) => {
-							res(r?.signals || []);
-						});
-					});
-				} catch {}
-
-				const report = await generateSiteExplanationWithGemini(apiKey, {
-					url,
-					domain,
-					verdict,
-					signals
-				});
-
-				summaryEl.textContent = report.threatSummary || '';
-				explEl.textContent = report.explanation || '';
-				if (report.recommendations && report.recommendations.length > 0) {
-					recsEl.innerHTML = '<strong class="text-zinc-300">Recommendations:</strong><ul class="list-disc list-inside mt-1">' +
-						report.recommendations.map(r => `<li>${r}</li>`).join('') +
-						'</ul>';
-				} else {
-					recsEl.innerHTML = '';
-				}
-
-				resultEl.classList.remove('hidden');
-			} catch (err) {
-				errorEl.textContent = err.message || 'Failed to generate Gemini explanation.';
-				errorEl.classList.remove('hidden');
-			} finally {
-				loadingEl.classList.add('hidden');
-				if (refreshBtn) refreshBtn.disabled = false;
-			}
-		}
-
-		if (refreshBtn) {
-			refreshBtn.addEventListener('click', () => {
-				// Re-read storage in case key was just entered or changed in input
-				chrome.storage.local.get(['geminiApiKey'], (curr) => {
-					const inputKey = geminiKeyInput ? geminiKeyInput.value.trim() : '';
-					stored.geminiApiKey = inputKey || curr.geminiApiKey;
-					fetchExplanation();
-				});
-			});
-		}
-
-		// Auto-fetch if key is already present and site is flagged (or user enabled blocklist)
-		if (stored.geminiApiKey && (verdict === 'phishing' || verdict === 'suspicious')) {
-			fetchExplanation();
-		}
-	});
-}

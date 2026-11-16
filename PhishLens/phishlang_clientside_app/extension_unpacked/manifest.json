@@ -38,7 +38,7 @@
     "default_popup": "public/popup.html"
   },
   "content_security_policy": {
-		"extension_pages": "script-src 'self'; connect-src 'self' https://generativelanguage.googleapis.com http://localhost:5000 http://localhost:5024; object-src 'self'"
+		"extension_pages": "script-src 'self'; connect-src 'self' http://localhost:5000 http://localhost:5024; object-src 'self'"
   },
   "web_accessible_resources": [
     {

@@ -48,6 +48,8 @@ const urlCheckResults = {};
 const whitelistMap = new Map();
 /** @type {Record<number, Array<object>>} */
 const tabBehavioralSignals = {};
+/** @type {Record<number, string>} */
+const tabStatusOverrides = {};
 /** @type {Record<number, { chain: Array<string>, startTime: number, lastCommittedUrl: string }>} */
 const navigationChains = {};
 
@@ -173,8 +175,8 @@ function recordBehavioralSignalForTab(tabId, signal) {
    ========================================================================== */
 
 chrome.runtime.onInstalled.addListener(async (_details) => {
-	await logGroupEventAsync('event-oninstalled-chrome.storage.local-user-settings', async () => {
-		await chrome.storage.local.set({ showBlocklist: false });
+	await logGroupEventAsync('event-oninstalled-clear-removed-ai-settings', async () => {
+		await chrome.storage.local.remove(['geminiApiKey', 'showBlocklist']);
 	});
 
 	await logGroupEventAsync('event-oninstalled-chrome.storage.local-whitelist', async () => {
@@ -198,6 +200,7 @@ if (chrome.webNavigation) {
 	chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 		// Only track top-level navigation
 		if (details.frameId !== 0) return;
+		clearTabStatusOverride(details.tabId);
 
 		const sanitized = sanitizeAndRedactUrl(details.url);
 		navigationChains[details.tabId] = {
@@ -245,6 +248,19 @@ if (chrome.webNavigation) {
 		}
 	});
 }
+
+function clearTabStatusOverride(tabId) {
+	delete tabStatusOverrides[tabId];
+	chrome.storage.session.remove(`phishlensTabStatus_${tabId}`).catch(() => {});
+}
+
+function setTabStatusOverride(tabId, status) {
+	if (!Number.isInteger(tabId) || !status) return;
+	tabStatusOverrides[tabId] = status;
+	chrome.storage.session.set({ [`phishlensTabStatus_${tabId}`]: status }).catch(() => {});
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => clearTabStatusOverride(tabId));
 
 /* ==========================================================================
    PHASE 3: OUT-OF-BAND REQUEST CORRELATION (chrome.webRequest)
@@ -493,6 +509,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 		case 'getCheckResult':
 			{
+				const tabId = Number.isInteger(message.tabId)
+					? message.tabId
+					: (sender.tab && Number.isInteger(sender.tab.id) ? sender.tab.id : null);
+				if (tabId !== null && tabStatusOverrides[tabId]) {
+					sendResponse({ phish: tabStatusOverrides[tabId] });
+					break;
+				}
+				if (tabId !== null) {
+					chrome.storage.session.get(`phishlensTabStatus_${tabId}`, (stored) => {
+						const tabOverride = stored[`phishlensTabStatus_${tabId}`];
+						if (tabOverride) {
+							sendResponse({ phish: tabOverride });
+							return;
+						}
+						let result = urlCheckResults[message.domain];
+						if (!result && message.fullUrl) {
+							try {
+								result = runHeuristicCheck(new URL(message.fullUrl)).verdict;
+								urlCheckResults[message.domain] = result;
+							} catch (e) {}
+						}
+						sendResponse({ phish: result });
+					});
+					return true;
+				}
+
 				let result = urlCheckResults[message.domain];
 				if (!result && message.fullUrl) {
 					try {
@@ -521,14 +563,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 		case 'forcePhishVerdict':
 			{
-				// Called by content-script when a page's x-phishlens-scenario meta tag declares 'phishing'.
-				// Overrides whitelist and URL-classifier results for this domain/tab.
+				// Test-page verdicts are scoped to their tab, so a shared host such as
+				// github.io does not make every page on that host appear malicious.
 				const targetDomain = message.domain;
 				const targetTabId = sender.tab ? sender.tab.id : (message.tabId || null);
-				if (targetDomain) {
-					urlCheckResults[targetDomain] = 'phishing';
-					chrome.storage.local.set({ [targetDomain]: PhishResult.asPhishing });
-					console.log('[PhishLens] forcePhishVerdict: domain flagged as phishing via test meta tag:', targetDomain);
+				if (Number.isInteger(targetTabId)) {
+					setTabStatusOverride(targetTabId, 'phishing');
+					console.log('[PhishLens] Test tab flagged as phishing:', targetDomain, targetTabId);
 				}
 				// Lock all forms in the calling tab (content script does it directly too, this is belt-and-suspenders)
 				if (targetTabId) {
@@ -556,11 +597,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 				if (message.payload && message.payload.url) {
 					try {
 						const domain = new URL(message.payload.url).hostname;
-						if (domain && !whitelistMap.has(domain)) {
+						if (domain) {
 							const allSignals = tabId && tabBehavioralSignals[tabId]
 								? tabBehavioralSignals[tabId]
 								: [];
-							const currentStatus = urlCheckResults[domain] ?? null;
+							const currentStatus = (tabId && tabStatusOverrides[tabId]) || urlCheckResults[domain] || null;
 							const aiVerdict = currentStatus === 'phishing' ? 'phishing'
 								: currentStatus === 'suspicious' ? 'suspicious'
 								: currentStatus === 'unverified' ? 'unverified'
@@ -568,8 +609,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 							const newStatus = derivePageStatusFromSignals(allSignals, currentStatus, aiVerdict);
 							if (newStatus) {
-								urlCheckResults[domain] = newStatus;
-								console.log(`[PhishLens Risk Engine] ${domain} → ${newStatus} (from ${allSignals.length} signals)`);
+								if (tabId) setTabStatusOverride(tabId, newStatus);
+								else urlCheckResults[domain] = newStatus;
+								console.log(`[PhishLens Risk Engine] ${domain} (tab ${tabId ?? 'unknown'}) → ${newStatus} (from ${allSignals.length} signals)`);
 
 								// If newly flagged as phishing, notify the tab immediately to lock all forms
 								if (newStatus === 'phishing' && tabId) {
@@ -897,49 +939,8 @@ async function onPhishResultEvent(context) {
 						styles.setAttribute('href', `chrome-extension://${chrome.runtime.id}/public/dist.css`);
 						document.head.appendChild(styles);
 
-						chrome.storage.local.get(['showBlocklist', 'geminiApiKey'], async (result) => {
-							if (!result.showBlocklist) {
-								let blocklistReasons = document.getElementById('blocklist-reasons');
-								if (blocklistReasons) blocklistReasons.style.display = 'none';
-							}
-
-							// If Gemini API key is configured, generate dynamic explanation on block page
-							if (result.geminiApiKey) {
-								const insightBox = document.getElementById('gemini-phishing-insight');
-								const insightText = document.getElementById('gemini-phishing-text');
-								if (insightBox && insightText) {
-									insightBox.classList.remove('hidden');
-									insightText.textContent = 'Generating real-time AI security breakdown...';
-									try {
-										const controller = new AbortController();
-										const timeout = setTimeout(() => controller.abort(), 20000);
-										const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent', {
-											method: 'POST',
-											headers: {
-												'Content-Type': 'application/json',
-												'x-goog-api-key': result.geminiApiKey
-											},
-											body: JSON.stringify({
-												systemInstruction: { parts: [{ text: 'You are a cybersecurity analyst explaining a blocked phishing site in 2 clear sentences.' }] },
-												contents: [{ role: 'user', parts: [{ text: `Explain concisely why the site "${url}" is dangerous to visit and what threat it poses to users.` }] }],
-												generationConfig: { maxOutputTokens: 150 }
-											}),
-											signal: controller.signal
-										});
-										clearTimeout(timeout);
-										if (resp.ok) {
-											const data = await resp.json();
-											const reply = data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
-											if (reply) insightText.textContent = reply;
-										} else {
-											insightBox.classList.add('hidden');
-										}
-									} catch (e) {
-										insightBox.classList.add('hidden');
-									}
-								}
-							}
-						});
+						const blocklistReasons = document.getElementById('blocklist-reasons');
+						if (blocklistReasons) blocklistReasons.style.display = 'block';
 
 						const reportedUrl = document.getElementById('reported-url');
 						if (reportedUrl) reportedUrl.textContent = url.toString();

@@ -4,9 +4,6 @@
 	<meta charset="UTF-8">
 	<title>PhishLens Extension Popup</title>
 	<link rel="stylesheet" type="text/css" href="./dist.css" />
-	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
 </head>
 <body class="w-[400px] text-base font-sans bg-zinc-800 text-zinc-50">
 	<div class="flex flex-col gap-3">
@@ -31,58 +28,12 @@
 			</div>
 		</header>
 		<main class="text-sm mt-[-0.75rem] flex flex-col">
-			<div id="settings" class="flex flex-col p-4 border-b border-zinc-700 gap-4">
-				<span class="font-semibold text-lg text-center">User Settings</span>
-				<div class="flex items-start gap-2">
-					<input type="checkbox" id="checkbox-blocklist" class="size-5" />
-					<label class="flex flex-col leading-normal" for="checkbox-blocklist">
-						<span class="font-bold" id="blocklist-title">Show blocklist</span>
-						<span class="text-zinc-300" id="blocklist-desc">Show in-depth explanations on why the site is blocked.</span>
-					</label>
-				</div>
-				<div class="flex-col items-start gap-2 ml-6 hidden" id="gemini-key-section">
-					<label class="flex flex-col leading-normal">
-						<span class="font-bold" id="gemini-key-title">Gemini API Key</span>
-						<span class="text-zinc-300" id="gemini-key-desc">
-							Visit <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline">Google AI Studio</a> to get your key.
-							Integrates with Gemini for in-depth explanations on site security reports.
-						</span>
-					</label>
-					<input type="password" id="gemini-key-input" class="p-1.5 text-white w-full rounded bg-zinc-700 border border-zinc-600 placeholder:text-zinc-400 font-mono text-xs" placeholder="Gemini API key" />
-					<span id="gemini-key-saved" class="text-xs text-green-400 hidden">✓ API key saved</span>
-				</div>
-			</div>
 			<div id="website-status" class="flex flex-col p-4 border-b border-zinc-700 text-center">
 				<span class="font-semibold text-lg">Website Status</span>
 				<span id="status">Checking...</span>
 				<div id="warning"></div>
 			</div>
 			<div id="website-report"></div>
-			<div id="gemini-explanation-container" class="hidden p-4 border-b border-zinc-700 bg-zinc-850">
-				<div class="flex items-center justify-between mb-2">
-					<span class="font-semibold text-sm flex items-center gap-1.5 text-blue-400">
-						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M12 2a10 10 0 1 0 10 10H12V2z"></path>
-							<path d="M12 12L2.1 12a10.1 10.1 0 0 0 1.9 4"></path>
-						</svg>
-						Gemini Security Insights
-					</span>
-					<button id="gemini-refresh-btn" class="text-xs text-zinc-400 hover:text-white underline cursor-pointer">Generate</button>
-				</div>
-				<div id="gemini-loading" class="hidden text-xs text-zinc-400 italic py-2 flex items-center gap-2">
-					<svg class="animate-spin h-3.5 w-3.5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-					</svg>
-					Analyzing site with Gemini...
-				</div>
-				<div id="gemini-error" class="hidden text-xs text-red-400 py-1"></div>
-				<div id="gemini-result" class="hidden flex flex-col gap-2 text-xs">
-					<div id="gemini-summary" class="font-medium text-zinc-200"></div>
-					<div id="gemini-explanation" class="text-zinc-300 leading-relaxed whitespace-pre-line"></div>
-					<div id="gemini-recommendations" class="mt-1 text-zinc-400"></div>
-				</div>
-			</div>
 			<dl class="p-4 flex flex-col gap-2 items-start">
 				<div class="flex flex-col">
 					<dt>Base URL</dt>
