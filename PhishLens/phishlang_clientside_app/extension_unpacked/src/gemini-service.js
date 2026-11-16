@@ -1,10 +1,10 @@
 /**
- * PhishLens OpenAI Client Service
+ * PhishLens Gemini Client Service
  * Generates dynamic, AI-powered site security reports and explanation of threats.
  */
 
 /**
- * Call OpenAI Chat Completion API to explain why a website was flagged or evaluate its threat profile.
+ * Call Gemini generateContent API to explain why a website was flagged or evaluate its threat profile.
  * @param {string} apiKey
  * @param {object} params
  * @param {string} params.url
@@ -13,13 +13,10 @@
  * @param {Array<object>} [params.signals]
  * @returns {Promise<{ explanation: string, threatSummary: string, recommendations: string[] }>}
  */
-export async function generateSiteExplanationWithOpenAI(apiKey, { url, domain, verdict, signals = [] }) {
+export async function generateSiteExplanationWithGemini(apiKey, { url, domain, verdict, signals = [] }) {
 	const trimmedKey = (apiKey || '').trim();
 	if (!trimmedKey) {
-		throw new Error('Please enter your OpenAI API key in User Settings above.');
-	}
-	if (!trimmedKey.startsWith('sk-')) {
-		throw new Error('Invalid key format: OpenAI API keys usually start with "sk-".');
+		throw new Error('Please enter your Gemini API key in User Settings above.');
 	}
 
 	const signalsSummary = signals.length > 0
@@ -48,33 +45,42 @@ Please reply in valid JSON format matching this exact schema:
 }
 Return only JSON with no markdown wrapping or markdown codeblocks.`;
 
-	const response = await fetch('https://api.openai.com/v1/chat/completions', {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			'Authorization': `Bearer ${apiKey}`
-		},
-		body: JSON.stringify({
-			model: 'gpt-3.5-turbo',
-			messages: [
-				{ role: 'system', content: 'You are a cybersecurity expert specializing in phishing detection.' },
-				{ role: 'user', content: prompt }
-			],
-			temperature: 0.2,
-			max_tokens: 500
-		})
-	});
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 30000);
+	let response;
+	try {
+		response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'x-goog-api-key': trimmedKey
+			},
+			body: JSON.stringify({
+				systemInstruction: { parts: [{ text: 'You are a cybersecurity expert specializing in phishing detection.' }] },
+				contents: [{ role: 'user', parts: [{ text: prompt }] }],
+				generationConfig: { temperature: 0.2, maxOutputTokens: 500, responseMimeType: 'application/json' }
+			}),
+			signal: controller.signal
+		});
+	} catch (error) {
+		if (error.name === 'AbortError') {
+			throw new Error('Gemini did not respond within 30 seconds. Check your connection and API key, then try again.');
+		}
+		throw error;
+	} finally {
+		clearTimeout(timeout);
+	}
 
 	if (!response.ok) {
 		const errData = await response.json().catch(() => ({}));
 		const errMsg = errData.error?.message || `HTTP ${response.status} ${response.statusText}`;
-		throw new Error(`OpenAI API error: ${errMsg}`);
+		throw new Error(`Gemini API error: ${errMsg}`);
 	}
 
 	const data = await response.json();
-	const text = data.choices?.[0]?.message?.content?.trim();
+	const text = data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
 	if (!text) {
-		throw new Error('Received empty response from OpenAI.');
+		throw new Error('Received empty response from Gemini.');
 	}
 
 	try {

@@ -519,6 +519,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 			}
 			break;
 
+		case 'forcePhishVerdict':
+			{
+				// Called by content-script when a page's x-phishlens-scenario meta tag declares 'phishing'.
+				// Overrides whitelist and URL-classifier results for this domain/tab.
+				const targetDomain = message.domain;
+				const targetTabId = sender.tab ? sender.tab.id : (message.tabId || null);
+				if (targetDomain) {
+					urlCheckResults[targetDomain] = 'phishing';
+					chrome.storage.local.set({ [targetDomain]: PhishResult.asPhishing });
+					console.log('[PhishLens] forcePhishVerdict: domain flagged as phishing via test meta tag:', targetDomain);
+				}
+				// Lock all forms in the calling tab (content script does it directly too, this is belt-and-suspenders)
+				if (targetTabId) {
+					chrome.tabs.sendMessage(targetTabId, { action: 'lockAllFormsDueToPhishing' }).catch(() => {});
+				}
+				sendResponse({ status: 'forced', domain: targetDomain });
+			}
+			break;
+
 		case 'behavioralThreatSignal':
 			{
 				const tabId = sender.tab ? sender.tab.id : (message.tabId || null);
@@ -878,38 +897,39 @@ async function onPhishResultEvent(context) {
 						styles.setAttribute('href', `chrome-extension://${chrome.runtime.id}/public/dist.css`);
 						document.head.appendChild(styles);
 
-						chrome.storage.local.get(['showBlocklist', 'openaiApiKey'], async (result) => {
+						chrome.storage.local.get(['showBlocklist', 'geminiApiKey'], async (result) => {
 							if (!result.showBlocklist) {
 								let blocklistReasons = document.getElementById('blocklist-reasons');
 								if (blocklistReasons) blocklistReasons.style.display = 'none';
 							}
 
-							// If OpenAI API key is configured, generate dynamic explanation on block page
-							if (result.openaiApiKey) {
-								const insightBox = document.getElementById('openai-phishing-insight');
-								const insightText = document.getElementById('openai-phishing-text');
+							// If Gemini API key is configured, generate dynamic explanation on block page
+							if (result.geminiApiKey) {
+								const insightBox = document.getElementById('gemini-phishing-insight');
+								const insightText = document.getElementById('gemini-phishing-text');
 								if (insightBox && insightText) {
 									insightBox.classList.remove('hidden');
 									insightText.textContent = 'Generating real-time AI security breakdown...';
 									try {
-										const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+										const controller = new AbortController();
+										const timeout = setTimeout(() => controller.abort(), 20000);
+										const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent', {
 											method: 'POST',
 											headers: {
 												'Content-Type': 'application/json',
-												'Authorization': `Bearer ${result.openaiApiKey}`
+												'x-goog-api-key': result.geminiApiKey
 											},
 											body: JSON.stringify({
-												model: 'gpt-3.5-turbo',
-												messages: [
-													{ role: 'system', content: 'You are a cybersecurity analyst explaining a blocked phishing site in 2 clear sentences.' },
-													{ role: 'user', content: `Explain concisely why the site "${url}" is dangerous to visit and what threat it poses to users.` }
-												],
-												max_tokens: 150
-											})
+												systemInstruction: { parts: [{ text: 'You are a cybersecurity analyst explaining a blocked phishing site in 2 clear sentences.' }] },
+												contents: [{ role: 'user', parts: [{ text: `Explain concisely why the site "${url}" is dangerous to visit and what threat it poses to users.` }] }],
+												generationConfig: { maxOutputTokens: 150 }
+											}),
+											signal: controller.signal
 										});
+										clearTimeout(timeout);
 										if (resp.ok) {
 											const data = await resp.json();
-											const reply = data.choices?.[0]?.message?.content?.trim();
+											const reply = data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
 											if (reply) insightText.textContent = reply;
 										} else {
 											insightBox.classList.add('hidden');

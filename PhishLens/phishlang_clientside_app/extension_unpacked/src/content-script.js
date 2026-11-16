@@ -1868,7 +1868,14 @@
 
 		if (scenario === 'phishing') {
 			lockEntirePageFormsDueToPhishing();
-			// Also notify the service worker so it stores the verdict for this domain
+			// Store an explicit test verdict so the popup agrees with the page lockdown.
+			try {
+				chrome.runtime.sendMessage({
+					action: 'forcePhishVerdict',
+					domain: window.location.hostname
+				});
+			} catch (e) {}
+			// Also record the scenario as a behavioral signal for the report panel.
 			try {
 				chrome.runtime.sendMessage({
 					action: 'behavioralThreatSignal',

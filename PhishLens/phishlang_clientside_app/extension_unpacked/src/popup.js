@@ -1,5 +1,5 @@
 import { onPhishStatusAsync } from './utils.js';
-import { generateSiteExplanationWithOpenAI } from './openai-service.js';
+import { generateSiteExplanationWithGemini } from './gemini-service.js';
 
 /**
  * @param {Element|string} elementOrId
@@ -242,22 +242,34 @@ document.addEventListener('DOMContentLoaded', async function () {
 		return;
 	}
 
-	// Setup checkbox preference and OpenAI API key storage
+	// Content scripts are not injected into file:// pages by this extension.
+	// Do not let the URL-only fallback present an unscanned local file as safe.
+	if (url.protocol === 'file:') {
+		setElementText('status', 'Local file — not scanned');
+		setElementText('warning', 'PhishLens cannot inspect this file page. Serve the demo over http://localhost and scan that page instead.');
+		const warningElement = document.getElementById('warning');
+		if (warningElement) warningElement.className = 'text-left p-4 pb-2';
+		const popupHeader = document.getElementById('popup-header');
+		if (popupHeader) toggleTwClass(popupHeader, 'bg-', 'bg-yellow-600');
+		return;
+	}
+
+	// Setup checkbox preference and Gemini API key storage
 	const checkboxBlocklist = document.getElementById('checkbox-blocklist');
-	const openAiKeySection = document.getElementById('openai-key-section');
-	const openAiKeyInput = document.getElementById('openai-key-input');
-	const openAiKeySaved = document.getElementById('openai-key-saved');
+	const geminiKeySection = document.getElementById('gemini-key-section');
+	const geminiKeyInput = document.getElementById('gemini-key-input');
+	const geminiKeySaved = document.getElementById('gemini-key-saved');
 
 	if (checkboxBlocklist) {
-		chrome.storage.local.get(['showBlocklist', 'openaiApiKey'], (result) => {
+		chrome.storage.local.get(['showBlocklist', 'geminiApiKey'], (result) => {
 			const isChecked = !!result.showBlocklist;
 			checkboxBlocklist.checked = isChecked;
-			if (openAiKeySection) {
-				openAiKeySection.classList.toggle('hidden', !isChecked);
-				openAiKeySection.classList.toggle('flex', isChecked);
+			if (geminiKeySection) {
+				geminiKeySection.classList.toggle('hidden', !isChecked);
+				geminiKeySection.classList.toggle('flex', isChecked);
 			}
-			if (openAiKeyInput && result.openaiApiKey) {
-				openAiKeyInput.value = result.openaiApiKey;
+			if (geminiKeyInput && result.geminiApiKey) {
+				geminiKeyInput.value = result.geminiApiKey;
 			}
 		});
 
@@ -271,18 +283,18 @@ document.addEventListener('DOMContentLoaded', async function () {
 		});
 	}
 
-	if (openAiKeyInput) {
+	if (geminiKeyInput) {
 		const saveKey = () => {
-			const key = openAiKeyInput.value.trim();
-			chrome.storage.local.set({ openaiApiKey: key }, () => {
-				if (openAiKeySaved) {
-					openAiKeySaved.classList.remove('hidden');
-					setTimeout(() => openAiKeySaved.classList.add('hidden'), 2500);
+			const key = geminiKeyInput.value.trim();
+			chrome.storage.local.set({ geminiApiKey: key }, () => {
+				if (geminiKeySaved) {
+					geminiKeySaved.classList.remove('hidden');
+					setTimeout(() => geminiKeySaved.classList.add('hidden'), 2500);
 				}
 			});
 		};
-		openAiKeyInput.addEventListener('input', saveKey);
-		openAiKeyInput.addEventListener('change', saveKey);
+		geminiKeyInput.addEventListener('input', saveKey);
+		geminiKeyInput.addEventListener('change', saveKey);
 	}
 
 	// --- Main check ---
@@ -340,8 +352,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 		console.debug('[PhishLens Popup] getBehavioralSignals failed:', e);
 	}
 
-	// --- OpenAI In-Depth Site Security Explanation ---
-	setupOpenAIInsights({
+	// --- Gemini In-Depth Site Security Explanation ---
+	setupGeminiInsights({
 		url: url.toString(),
 		domain,
 		verdict: phishStatus || 'unknown',
@@ -350,22 +362,22 @@ document.addEventListener('DOMContentLoaded', async function () {
 });
 
 /**
- * Configure and trigger OpenAI in-depth explanation UI
+ * Configure and trigger Gemini in-depth explanation UI
  * @param {object} params
  */
-function setupOpenAIInsights({ url, domain, verdict, tabId }) {
-	const container = document.getElementById('openai-explanation-container');
-	const refreshBtn = document.getElementById('openai-refresh-btn');
-	const loadingEl = document.getElementById('openai-loading');
-	const errorEl = document.getElementById('openai-error');
-	const resultEl = document.getElementById('openai-result');
-	const summaryEl = document.getElementById('openai-summary');
-	const explEl = document.getElementById('openai-explanation');
-	const recsEl = document.getElementById('openai-recommendations');
+function setupGeminiInsights({ url, domain, verdict, tabId }) {
+	const container = document.getElementById('gemini-explanation-container');
+	const refreshBtn = document.getElementById('gemini-refresh-btn');
+	const loadingEl = document.getElementById('gemini-loading');
+	const errorEl = document.getElementById('gemini-error');
+	const resultEl = document.getElementById('gemini-result');
+	const summaryEl = document.getElementById('gemini-summary');
+	const explEl = document.getElementById('gemini-explanation');
+	const recsEl = document.getElementById('gemini-recommendations');
 
 	if (!container) return;
 
-	chrome.storage.local.get(['showBlocklist', 'openaiApiKey'], (stored) => {
+	chrome.storage.local.get(['showBlocklist', 'geminiApiKey'], (stored) => {
 		if (!stored.showBlocklist) {
 			container.classList.add('hidden');
 			return;
@@ -374,9 +386,9 @@ function setupOpenAIInsights({ url, domain, verdict, tabId }) {
 		container.classList.remove('hidden');
 
 		async function fetchExplanation() {
-			const apiKey = stored.openaiApiKey;
+			const apiKey = stored.geminiApiKey;
 			if (!apiKey) {
-				errorEl.textContent = 'Please enter and save your OpenAI API key above in User Settings.';
+				errorEl.textContent = 'Please enter and save your Gemini API key above in User Settings.';
 				errorEl.classList.remove('hidden');
 				resultEl.classList.add('hidden');
 				return;
@@ -388,7 +400,7 @@ function setupOpenAIInsights({ url, domain, verdict, tabId }) {
 			if (refreshBtn) refreshBtn.disabled = true;
 
 			try {
-				// Fetch recent behavioral signals to provide rich context to OpenAI
+				// Fetch recent behavioral signals to provide rich context to Gemini
 				let signals = [];
 				try {
 					signals = await new Promise((res) => {
@@ -398,7 +410,7 @@ function setupOpenAIInsights({ url, domain, verdict, tabId }) {
 					});
 				} catch {}
 
-				const report = await generateSiteExplanationWithOpenAI(apiKey, {
+				const report = await generateSiteExplanationWithGemini(apiKey, {
 					url,
 					domain,
 					verdict,
@@ -417,7 +429,7 @@ function setupOpenAIInsights({ url, domain, verdict, tabId }) {
 
 				resultEl.classList.remove('hidden');
 			} catch (err) {
-				errorEl.textContent = err.message || 'Failed to generate OpenAI explanation.';
+				errorEl.textContent = err.message || 'Failed to generate Gemini explanation.';
 				errorEl.classList.remove('hidden');
 			} finally {
 				loadingEl.classList.add('hidden');
@@ -428,16 +440,16 @@ function setupOpenAIInsights({ url, domain, verdict, tabId }) {
 		if (refreshBtn) {
 			refreshBtn.addEventListener('click', () => {
 				// Re-read storage in case key was just entered or changed in input
-				chrome.storage.local.get(['openaiApiKey'], (curr) => {
-					const inputKey = openAiKeyInput ? openAiKeyInput.value.trim() : '';
-					stored.openaiApiKey = inputKey || curr.openaiApiKey;
+				chrome.storage.local.get(['geminiApiKey'], (curr) => {
+					const inputKey = geminiKeyInput ? geminiKeyInput.value.trim() : '';
+					stored.geminiApiKey = inputKey || curr.geminiApiKey;
 					fetchExplanation();
 				});
 			});
 		}
 
 		// Auto-fetch if key is already present and site is flagged (or user enabled blocklist)
-		if (stored.openaiApiKey && (verdict === 'phishing' || verdict === 'suspicious')) {
+		if (stored.geminiApiKey && (verdict === 'phishing' || verdict === 'suspicious')) {
 			fetchExplanation();
 		}
 	});
